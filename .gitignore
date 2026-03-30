@@ -1,0 +1,58 @@
+# =============================================================================
+# SECURITY: This file MUST be committed before any secrets or sensitive files.
+# Rule: Never commit .env or API keys. Violations affect grade (per rubric 5b).
+# =============================================================================
+
+# --- Secrets & Environment Variables ---
+# CRITICAL: .env contains real API keys — never commit this file
+.env
+.env.local
+.env.*.local
+
+# --- Python ---
+# Exclude compiled bytecode and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.egg
+
+# --- Node.js ---
+# Exclude installed packages (use package.json to reinstall)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.npm/
+
+# --- Jupyter Notebooks ---
+# Exclude checkpoint files generated during notebook use
+.ipynb_checkpoints/
+
+# --- macOS ---
+# Exclude macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- IDEs & Editors ---
+# Exclude editor-specific config that should not be shared
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# --- Data: Large Files ---
+# Files over 10MB should not be committed (use download scripts instead per rubric 5b)
+# Add specific large file patterns here as needed
+*.csv.gz
+*.parquet
+
+# --- Build Outputs ---
+*.log
