@@ -1,6 +1,6 @@
 # FFIA — Fuel & Food Impact Analyzer for Restaurants
 
-> **MADT 7204 Vibe Coding Project** | Team 2 | Bangkok Oil Price Crisis
+> **MADT 7204 Agentic-AI Project** | Team x | FFIS Optimization for Restaurants
 
 ---
 
@@ -8,12 +8,11 @@
 
 | Role | Name |
 |---|---|
-| **IT Lead** | [Your Name Here] |
-| Mgmt Member | [Mgmt 1] |
-| Mgmt Member | [Mgmt 2] |
-| Mgmt Member | [Mgmt 3] |
-| Mgmt Member | [Mgmt 4] |
-| Mgmt Member | [Mgmt 5] |
+| **IT Lead** | Kanpirom Suksawat |
+| Mgmt Member | Pornphrom Rujiwatchara-oran |
+| Mgmt Member | Anantaporn Lapsakkarn |
+| Mgmt Member | Jantana Pattarapronpisit |
+| Mgmt Member | Rapeepat Rattanapachai |
 
 ---
 
