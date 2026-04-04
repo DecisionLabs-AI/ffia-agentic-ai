@@ -7,7 +7,7 @@
 import os
 from dotenv import load_dotenv
 from google.cloud import bigquery
-from langchain.tools import Tool
+from langchain_core.tools import tool
 
 load_dotenv()
 
@@ -17,9 +17,7 @@ BQ_DATASET = os.getenv("BIGQUERY_DATASET", "data_source")
 BQ_LOCATION = os.getenv("BIGQUERY_LOCATION", "asia-southeast3")
 
 # Step 3: Table schema description — tells the LLM what tables and columns exist
-# so it can write correct SQL without hallucinating schema.
 # TODO: Replace the placeholder below with the actual schema from gcp-madt-ai.data_source
-# Format: "Table: <dataset>.<table> — columns: col1 (TYPE), col2 (TYPE), ..."
 TABLE_SCHEMA_DESCRIPTION = """
 Available tables in BigQuery dataset `gcp-madt-ai.data_source`:
 
@@ -36,10 +34,17 @@ Always use fully-qualified table names: `gcp-madt-ai.data_source.<table_name>`
 """
 
 
-# Step 4: Core query function with security guardrails
-def run_bigquery_query(sql: str) -> str:
-    """Execute a SELECT SQL query against BigQuery and return results as a string."""
+# Step 4: Define tool using @tool decorator (LangChain 1.x compatible)
+@tool
+def bigquery_tool(sql: str) -> str:
+    """Use this tool to query restaurant cost and oil price data from BigQuery.
 
+    Input MUST be a valid SQL SELECT statement using fully-qualified table names.
+    Example: SELECT * FROM `gcp-madt-ai.data_source.restaurant_costs` LIMIT 5
+
+    Only SELECT queries are allowed. Always use fully-qualified table names:
+    `gcp-madt-ai.data_source.<table_name>`
+    """
     # Step 4a: Security guardrail — only SELECT statements allowed
     if not sql.strip().upper().startswith("SELECT"):
         return "Error: Only SELECT queries are permitted. Mutations are not allowed."
@@ -49,8 +54,7 @@ def run_bigquery_query(sql: str) -> str:
         client = bigquery.Client(project=GCP_PROJECT)
 
         # Step 4c: Inject LIMIT 50 if not already present to cap cost/output
-        sql_upper = sql.upper()
-        if "LIMIT" not in sql_upper:
+        if "LIMIT" not in sql.upper():
             sql = sql.rstrip(";").strip() + " LIMIT 50"
 
         # Step 4d: Execute query
@@ -67,22 +71,9 @@ def run_bigquery_query(sql: str) -> str:
         return f"BigQuery error: {str(e)}"
 
 
-# Step 5: Wrap in LangChain Tool for the ReAct agent
-bigquery_tool = Tool(
-    name="BigQuerySQL",
-    func=run_bigquery_query,
-    description=(
-        "Use this tool to query restaurant cost and oil price data from BigQuery. "
-        f"{TABLE_SCHEMA_DESCRIPTION}"
-        "Input MUST be a valid SQL SELECT statement using fully-qualified table names. "
-        "Example: SELECT * FROM `gcp-madt-ai.data_source.restaurant_costs` LIMIT 5"
-    ),
-)
-
-
-# Step 6: Standalone test block
+# Step 5: Standalone test block
 if __name__ == "__main__":
     print("Testing BigQuery tool...")
     test_sql = f"SELECT * FROM `{GCP_PROJECT}.{BQ_DATASET}.INFORMATION_SCHEMA.TABLES`"
-    result = run_bigquery_query(test_sql)
+    result = bigquery_tool.invoke(test_sql)
     print(result)

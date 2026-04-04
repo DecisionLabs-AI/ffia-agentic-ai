@@ -92,14 +92,13 @@ if user_input:
         reply = result.get("output", "Sorry, I could not produce an answer.")
         st.markdown(reply)
 
-        # Step 9c-iv: Fallback — if the live handler missed steps, render them statically
+        # Step 9c-iv: Fallback — render intermediate steps statically if expander is empty
         steps = result.get("intermediate_steps", [])
-        if steps and not trace_container._provided_cursor:  # only if expander is empty
-            with st.expander("Agent Reasoning Trace (static fallback)", expanded=False):
-                for i, (action, observation) in enumerate(steps, 1):
-                    st.caption(f"**Step {i} — {action.tool}**")
-                    st.code(action.log.strip(), language="text")
-                    st.caption(f"Observation: {observation}")
+        if steps:
+            with st.expander("Tool Calls (detail)", expanded=False):
+                for i, (tool_name, observation) in enumerate(steps, 1):
+                    st.caption(f"**Step {i} — {tool_name}**")
+                    st.caption(f"Observation: {str(observation)[:500]}")
 
     # Step 9d: Save both turns to session history
     st.session_state.messages.append({"role": "user", "content": user_input})

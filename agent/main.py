@@ -1,6 +1,6 @@
 # =============================================================================
 # FFIA — agent/main.py
-# W2: LangChain ReAct agent with Gemini 1.5 (Vertex AI) + 2 tools:
+# W2: LangGraph ReAct agent with Gemini 1.5 (Vertex AI) + 2 tools:
 #   - BigQuerySQL: query restaurant cost data
 #   - WebSearch: look up Bangkok oil prices and Thai fuel news
 # =============================================================================
@@ -10,15 +10,19 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-# Step 2: Standard library imports
+# Step 2: Standard library imports + project root on path
 import os
 import sys
 from pathlib import Path
 
-# Step 3: LangChain imports — agent framework
+# Add project root to sys.path so 'agent.tools.*' imports work when running
+# this file directly (python3 agent/main.py) or via Streamlit (app/main.py)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Step 3: LangChain + LangGraph imports
 from langchain_google_vertexai import ChatVertexAI
-from langchain import hub
-from langchain.agents import AgentExecutor, create_react_agent
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.prebuilt import create_react_agent
 
 # Step 4: Import tools built in agent/tools/
 from agent.tools.bigquery_tool import bigquery_tool
@@ -53,68 +57,72 @@ _validate_env()
 # Step 7: Initialize Gemini 1.5 via Vertex AI
 # ChatVertexAI uses GOOGLE_APPLICATION_CREDENTIALS (ADC) automatically
 llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-flash",
     project=os.getenv("GOOGLE_CLOUD_PROJECT", "gcp-madt-ai"),
-    location="asia-southeast1",   # Nearest Vertex AI region to Bangkok
-    temperature=0,                # Deterministic output for data analysis
+    location="us-central1",   # Nearest Vertex AI region to Bangkok
+    temperature=0,            # Deterministic output for data analysis
     max_output_tokens=2048,
 )
 
-# Step 8: Collect tools for the ReAct agent
+# Step 8: Collect tools and load system prompt
 tools = [bigquery_tool, search_tool]
+system_prompt = _load_system_prompt()
 
-# Step 9: Pull standard ReAct prompt template from LangChain Hub
-# hwchase17/react is the canonical single-input ReAct prompt
-react_prompt = hub.pull("hwchase17/react")
-
-# Step 10: Inject FFIA system context as a prefix to the ReAct prompt
-system_context = _load_system_prompt()
-react_prompt = react_prompt.partial(
-    # The ReAct template has no system slot, so we prepend context to instructions
-)
-
-# Step 11: Create the ReAct agent (LLM + tools + prompt)
-agent = create_react_agent(llm=llm, tools=tools, prompt=react_prompt)
-
-# Step 12: Wrap in AgentExecutor — manages the Thought/Action/Observation loop
-agent_executor = AgentExecutor(
-    agent=agent,
+# Step 9: Create LangGraph ReAct agent
+# create_react_agent handles the Thought/Action/Observation loop internally
+# prompt= injects the system message so the agent knows its FFIA role
+agent = create_react_agent(
+    model=llm,
     tools=tools,
-    verbose=True,                  # Logs Thought/Action/Observation to console
-    handle_parsing_errors=True,    # Prevents crash if LLM output format is off
-    max_iterations=8,              # Safety cap: stops runaway tool-call loops
-    return_intermediate_steps=True # Required for reasoning trace in Streamlit UI
+    prompt=system_prompt,
 )
 
 
-# Step 13: Public function called by app/main.py
+# Step 10: Public function called by app/main.py
 def run_agent(user_message: str, chat_history: list = None, callbacks: list = None) -> dict:
     """
-    Run the FFIA ReAct agent and return the result dict.
+    Run the FFIA ReAct agent and return a normalized result dict.
 
     Args:
         user_message: The user's question or input.
-        chat_history: List of previous turns (unused in ReAct but kept for API compat).
+        chat_history: List of previous turns (kept for API compat, unused in ReAct).
         callbacks: LangChain callbacks, e.g. [StreamlitCallbackHandler(...)].
-                   Passed per-request so each UI session gets its own handler.
 
     Returns:
         dict with keys:
           "output"             — final answer string
-          "intermediate_steps" — list of (AgentAction, observation) tuples
+          "intermediate_steps" — list of (tool_name, observation) tuples for the UI trace
     """
-    # Step 13a: Build input — include system context so agent knows its role
-    full_input = f"{system_context}\n\nUser question: {user_message}"
-
-    # Step 13b: Run agent, passing callbacks for live Streamlit rendering
-    result = agent_executor.invoke(
-        {"input": full_input},
+    # Step 10a: Invoke the LangGraph agent
+    result = agent.invoke(
+        {"messages": [HumanMessage(content=user_message)]},
         config={"callbacks": callbacks or []}
     )
-    return result
+
+    # Step 10b: Extract final answer from the last AI message
+    messages = result.get("messages", [])
+    output = ""
+    for msg in reversed(messages):
+        if hasattr(msg, "content") and msg.content and not getattr(msg, "tool_calls", None):
+            output = msg.content
+            break
+
+    # Step 10c: Extract intermediate steps (tool calls + observations) for the UI trace
+    intermediate_steps = []
+    for msg in messages:
+        tool_calls = getattr(msg, "tool_calls", None)
+        if tool_calls:
+            for tc in tool_calls:
+                intermediate_steps.append((tc.get("name", "tool"), ""))
+        if hasattr(msg, "name") and msg.name:  # ToolMessage
+            if intermediate_steps:
+                name, _ = intermediate_steps[-1]
+                intermediate_steps[-1] = (name, msg.content)
+
+    return {"output": output, "intermediate_steps": intermediate_steps}
 
 
-# Step 14: CLI test block — run without Streamlit for quick verification
+# Step 11: CLI test block — run without Streamlit for quick verification
 if __name__ == "__main__":
     print("FFIA ReAct Agent — W2 CLI Test")
     print("Type your message (Ctrl+C to quit)\n")
@@ -128,12 +136,11 @@ if __name__ == "__main__":
             result = run_agent(user_input)
             print(f"\nFFIA: {result['output']}\n")
 
-            # Show intermediate steps summary in CLI
             steps = result.get("intermediate_steps", [])
             if steps:
                 print(f"  [{len(steps)} tool call(s) made]")
-                for action, observation in steps:
-                    print(f"  -> {action.tool}: {str(observation)[:120]}...")
+                for tool_name, observation in steps:
+                    print(f"  -> {tool_name}: {str(observation)[:120]}")
             print()
 
         except KeyboardInterrupt:

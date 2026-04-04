@@ -7,16 +7,15 @@
 # Step 1: Imports
 import os
 from dotenv import load_dotenv
-from langchain.tools import Tool
+from langchain_core.tools import tool
 
 load_dotenv()
 
 
-# Step 2: Build the search function — auto-upgrades to Tavily if key is present
+# Step 2: Build the search backend — auto-upgrades to Tavily if key is present
 def _build_search_func():
     """Return the best available search backend."""
     tavily_key = os.getenv("TAVILY_API_KEY")
-
     if tavily_key:
         # Step 2a: Tavily path (structured results, better quality)
         from langchain_community.tools.tavily_search import TavilySearchResults
@@ -28,26 +27,23 @@ def _build_search_func():
         ddg = DuckDuckGoSearchRun()
         return ddg.run
 
-
 _search_func = _build_search_func()
 
 
-# Step 3: Wrap in LangChain Tool for the ReAct agent
-search_tool = Tool(
-    name="WebSearch",
-    func=_search_func,
-    description=(
-        "Use this tool to search for real-time information about Bangkok oil prices, "
-        "Thai diesel/gasohol fuel costs, restaurant industry news in Thailand, "
-        "or any current events affecting food costs. "
-        "Input should be a focused English search query. "
-        "Example: 'Bangkok diesel price today THB' or 'Thailand cooking oil cost 2024'"
-    ),
-)
+# Step 3: Define tool using @tool decorator (LangChain 1.x compatible)
+@tool
+def search_tool(query: str) -> str:
+    """Search for real-time information about Bangkok oil prices, Thai diesel or
+    gasohol fuel costs, restaurant industry news in Thailand, or current events
+    affecting food costs. Input should be a focused English search query.
+    Example: 'Bangkok diesel price today THB'
+    """
+    # Step 3a: Delegate to whichever search backend was selected at startup
+    return _search_func(query)
 
 
 # Step 4: Standalone test block
 if __name__ == "__main__":
     print("Testing Web Search tool...")
-    result = search_tool.func("Bangkok diesel price today Thailand")
+    result = search_tool.invoke("Bangkok diesel price today Thailand")
     print(result)

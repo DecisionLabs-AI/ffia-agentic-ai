@@ -7,9 +7,10 @@
 streamlit>=1.32.0
 
 # --- LLM + Agent Framework (W2: replaced Anthropic with LangChain + Gemini) ---
-langchain>=0.2.0
-langchain-google-vertexai>=1.0.0
-langchain-community>=0.2.0
+langchain>=0.3.0
+langchain-google-vertexai>=2.0.0
+langchain-community>=0.3.0
+langgraph>=0.2.0
 
 # --- Google Cloud (BigQuery + Vertex AI auth via ADC) ---
 google-cloud-bigquery>=3.11.0
@@ -17,7 +18,7 @@ google-auth>=2.28.0
 pyarrow>=14.0.0
 
 # --- Web Search (DuckDuckGo, no API key required) ---
-duckduckgo-search>=5.0.0
+ddgs>=9.0.0
 
 # --- Environment Variables (load .env file securely) ---
 python-dotenv>=1.0.0
