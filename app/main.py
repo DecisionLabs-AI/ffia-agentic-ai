@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Step 2: Streamlit and agent imports
 import streamlit as st
 from agent.main import run_agent
-from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 
 # Step 3: Configure the page
 st.set_page_config(
@@ -71,34 +70,33 @@ if user_input:
         for m in st.session_state.messages
     ]
 
-    # Step 9c: Run the ReAct agent with live reasoning trace in the UI
+    # Step 9c: Run the ReAct agent and render clean structured trace
     with st.chat_message("assistant"):
 
-        # Step 9c-i: Create reasoning trace expander BEFORE calling the agent
-        # StreamlitCallbackHandler writes Thought/Action/Observation into this container live
-        with st.expander("Agent Reasoning Trace", expanded=True):
-            trace_container = st.container()
-            st_callback = StreamlitCallbackHandler(
-                parent_container=trace_container,
-                expand_new_thoughts=True,
-                collapse_completed_thoughts=True,
-            )
-
-        # Step 9c-ii: Call the agent, passing the callback for live rendering
+        # Step 9c-i: Run agent with spinner
         with st.spinner("FFIA is thinking..."):
-            result = run_agent(user_input, history, callbacks=[st_callback])
+            result = run_agent(user_input, history)
 
-        # Step 9c-iii: Render the final answer outside the expander so it's always visible
-        reply = result.get("output", "Sorry, I could not produce an answer.")
-        st.markdown(reply)
-
-        # Step 9c-iv: Fallback — render intermediate steps statically if expander is empty
+        # Step 9c-ii: Render structured ReAct trace inside expander
+        # intermediate_steps is a list of (tool_name: str, observation: str) tuples
         steps = result.get("intermediate_steps", [])
         if steps:
-            with st.expander("Tool Calls (detail)", expanded=False):
-                for i, (tool_name, observation) in enumerate(steps, 1):
-                    st.caption(f"**Step {i} — {tool_name}**")
-                    st.caption(f"Observation: {str(observation)[:500]}")
+            with st.expander("Agent Reasoning Trace", expanded=True):
+                step_num = 1
+                for tool_name, observation in steps:
+                    st.markdown(f"**Step {step_num} — Action:** `{tool_name}`")
+                    if observation:
+                        st.markdown(f"**Observation:** {str(observation)[:500]}")
+                    st.divider()
+                    step_num += 1
+                reply = result.get("output", "Sorry, I could not produce an answer.")
+                st.markdown(f"**Final Answer:** {reply}")
+        else:
+            # Step 9c-iii: No tool calls — just show the direct answer
+            reply = result.get("output", "Sorry, I could not produce an answer.")
+
+        # Step 9c-iv: Always render the final answer cleanly below the expander
+        st.markdown(reply)
 
     # Step 9d: Save both turns to session history
     st.session_state.messages.append({"role": "user", "content": user_input})

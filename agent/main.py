@@ -78,7 +78,24 @@ agent = create_react_agent(
 )
 
 
-# Step 10: Public function called by app/main.py
+# Step 10: Helper — normalize Gemini's content block list to a plain string
+# Gemini 2.5 Flash returns AIMessage.content as a list of dicts:
+# [{'type': 'text', 'text': '...', 'thought_signature': '...'}]
+# This strips out everything except the 'text' values.
+def _extract_text(content) -> str:
+    """Convert Gemini content blocks or any content type to a clean plain string."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+    return str(content)
+
+
+# Step 11: Public function called by app/main.py
 def run_agent(user_message: str, chat_history: list = None, callbacks: list = None) -> dict:
     """
     Run the FFIA ReAct agent and return a normalized result dict.
@@ -90,8 +107,8 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
 
     Returns:
         dict with keys:
-          "output"             — final answer string
-          "intermediate_steps" — list of (tool_name, observation) tuples for the UI trace
+          "output"             — final answer as a clean plain string
+          "intermediate_steps" — list of (tool_name: str, observation: str) tuples
     """
     # Step 10a: Invoke the LangGraph agent
     result = agent.invoke(
@@ -99,15 +116,16 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
         config={"callbacks": callbacks or []}
     )
 
-    # Step 10b: Extract final answer from the last AI message
+    # Step 10b: Extract final answer — normalize Gemini's content block list to plain string
     messages = result.get("messages", [])
     output = ""
     for msg in reversed(messages):
         if hasattr(msg, "content") and msg.content and not getattr(msg, "tool_calls", None):
-            output = msg.content
+            output = _extract_text(msg.content)
             break
 
     # Step 10c: Extract intermediate steps (tool calls + observations) for the UI trace
+    # Also normalize ToolMessage content to plain string
     intermediate_steps = []
     for msg in messages:
         tool_calls = getattr(msg, "tool_calls", None)
@@ -117,7 +135,7 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
         if hasattr(msg, "name") and msg.name:  # ToolMessage
             if intermediate_steps:
                 name, _ = intermediate_steps[-1]
-                intermediate_steps[-1] = (name, msg.content)
+                intermediate_steps[-1] = (name, _extract_text(msg.content))
 
     return {"output": output, "intermediate_steps": intermediate_steps}
 
