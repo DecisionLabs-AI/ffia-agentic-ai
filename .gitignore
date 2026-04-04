@@ -9,6 +9,15 @@
 .env.local
 .env.*.local
 
+# --- GCP Service Account Keys ---
+# CRITICAL: JSON key files grant full GCP access — never commit these
+*-key.json
+*_key.json
+*-credentials.json
+*_credentials.json
+*-service-account.json
+gcp-key.json
+
 # --- Python ---
 # Exclude compiled bytecode and virtual environments
 __pycache__/
