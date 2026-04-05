@@ -26,3 +26,10 @@ IT Lead: Kanpirom Suksawat. Stack: Python, Streamlit, Claude Sonnet, SQLite.
 - Commit `.env` (it is in .gitignore)
 - Use pytesseract — use Claude Vision for OCR instead
 - Add features beyond the current week's scope
+
+## Coding Standards & Library Versions
+- **Models:** ALWAYS use `gemini-2.5-flash` or newer. Never use `gemini-1.5-flash` as it is deprecated and will cause 404 errors.
+- **Google AI:** Use `langchain-google-genai` package. Import `ChatGoogleGenerativeAI` instead of the deprecated `ChatVertexAI`.
+- **LangChain:** ALWAYS import Tools from `langchain_core.tools` (e.g., `from langchain_core.tools import Tool`). Do NOT use `langchain.tools`.
+- **Agents:** Avoid deprecated LangChain agent methods. Use current LangGraph or up-to-date `langchain.agents` patterns.
+- **Dependencies:** When generating `requirements.txt`, always assume the latest versions of packages for the current year (2026).

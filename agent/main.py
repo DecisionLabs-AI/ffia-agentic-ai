@@ -60,7 +60,7 @@ llm = ChatVertexAI(
     model_name="gemini-2.5-flash",
     project=os.getenv("GOOGLE_CLOUD_PROJECT", "gcp-madt-ai"),
     location="us-central1",   # Nearest Vertex AI region to Bangkok
-    temperature=0,            # Deterministic output for data analysis
+    temperature=0.1,            # Deterministic output for data analysis
     max_output_tokens=2048,
 )
 
