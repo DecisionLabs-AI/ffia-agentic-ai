@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Step 3: LangChain + LangGraph imports
 from langchain_google_vertexai import ChatVertexAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 # Step 4: Import tools built in agent/tools/
@@ -95,6 +95,75 @@ def _extract_text(content) -> str:
     return str(content)
 
 
+MAX_CHAT_HISTORY_MESSAGES = 12
+
+
+def _build_agent_messages(user_message: str, chat_history: list | None = None) -> list:
+    """Convert UI chat history into LangChain message objects without duplicating the current turn."""
+    history = list(chat_history or [])
+
+    if history:
+        last_message = history[-1]
+        if (
+            last_message.get("role") in {"user", "human"}
+            and str(last_message.get("content", "")).strip() == user_message.strip()
+        ):
+            history = history[:-1]
+
+    relevant_history = history[-MAX_CHAT_HISTORY_MESSAGES:]
+    messages = []
+
+    for item in relevant_history:
+        role = item.get("role")
+        content = str(item.get("content", "")).strip()
+        if not content:
+            continue
+        if role in {"user", "human"}:
+            messages.append(HumanMessage(content=content))
+        elif role in {"assistant", "ai"}:
+            messages.append(AIMessage(content=content))
+        elif role == "system":
+            messages.append(SystemMessage(content=content))
+
+    messages.append(HumanMessage(content=user_message))
+    return messages
+
+
+def _extract_intermediate_steps(messages: list) -> list[tuple[str, str]]:
+    """Map tool outputs to their matching tool calls, even when calls complete out of order."""
+    intermediate_steps = []
+    tool_call_index: dict[str, int] = {}
+
+    for msg in messages:
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        for tool_call in tool_calls:
+            step_index = len(intermediate_steps)
+            tool_name = tool_call.get("name", "tool")
+            tool_call_id = tool_call.get("id")
+            intermediate_steps.append((tool_name, ""))
+            if tool_call_id:
+                tool_call_index[tool_call_id] = step_index
+
+        tool_name = getattr(msg, "name", None)
+        tool_call_id = getattr(msg, "tool_call_id", None)
+        if not tool_name:
+            continue
+
+        target_index = None
+        if tool_call_id and tool_call_id in tool_call_index:
+            target_index = tool_call_index[tool_call_id]
+        else:
+            for index, (existing_name, observation) in enumerate(intermediate_steps):
+                if existing_name == tool_name and not observation:
+                    target_index = index
+                    break
+
+        if target_index is not None:
+            intermediate_steps[target_index] = (intermediate_steps[target_index][0], _extract_text(msg.content))
+
+    return intermediate_steps
+
+
 # Step 11: Public function called by app/main.py
 def run_agent(user_message: str, chat_history: list = None, callbacks: list = None) -> dict:
     """
@@ -111,8 +180,9 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
           "intermediate_steps" — list of (tool_name: str, observation: str) tuples
     """
     # Step 10a: Invoke the LangGraph agent
+    agent_messages = _build_agent_messages(user_message, chat_history)
     result = agent.invoke(
-        {"messages": [HumanMessage(content=user_message)]},
+        {"messages": agent_messages},
         config={"callbacks": callbacks or []}
     )
 
@@ -126,16 +196,7 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
 
     # Step 10c: Extract intermediate steps (tool calls + observations) for the UI trace
     # Also normalize ToolMessage content to plain string
-    intermediate_steps = []
-    for msg in messages:
-        tool_calls = getattr(msg, "tool_calls", None)
-        if tool_calls:
-            for tc in tool_calls:
-                intermediate_steps.append((tc.get("name", "tool"), ""))
-        if hasattr(msg, "name") and msg.name:  # ToolMessage
-            if intermediate_steps:
-                name, _ = intermediate_steps[-1]
-                intermediate_steps[-1] = (name, _extract_text(msg.content))
+    intermediate_steps = _extract_intermediate_steps(messages)
 
     return {"output": output, "intermediate_steps": intermediate_steps}
 

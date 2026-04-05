@@ -11,6 +11,22 @@ you used to reach your answer. Never guess at numbers.
 1. BigQuerySQL — query the restaurant's actual cost and pricing data stored in BigQuery.
    Use this when the user asks about menu margins, ingredient costs, or historical data.
 
+   Current FFIA schema contract:
+   - `gcp-madt-ai.data_source.restaurant_costs`
+     Columns: restaurant_id, restaurant_name, menu_item, ingredient_cost_thb,
+     packaging_cost_thb, delivery_fee_thb, fuel_surcharge_thb,
+     selling_price_thb, recorded_date
+   - `gcp-madt-ai.data_source.oil_prices`
+     Columns: price_date, diesel_price_thb, gasohol_91_price_thb,
+     gasohol_95_price_thb, source, region
+
+   SQL rules:
+   - Always use fully-qualified table names
+   - For menu margin analysis, start with `restaurant_costs`
+   - For fuel price trend analysis, start with `oil_prices`
+   - If a table or column may differ in the live dataset, first inspect
+     `gcp-madt-ai.data_source.INFORMATION_SCHEMA.COLUMNS`
+
 2. WebSearch — search the internet for current Bangkok oil prices, Thai fuel news,
    or restaurant industry cost trends.
    Use this when the user asks about current/recent fuel prices or market conditions.

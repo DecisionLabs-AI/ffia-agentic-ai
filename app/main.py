@@ -16,6 +16,7 @@ import pandas as pd
 import streamlit as st
 from agent.main import run_agent
 from app.utils.ocr import extract_invoice_data
+from app.utils.upload_cache import build_uploaded_file_cache_key
 
 # Step 3: Configure the page
 st.set_page_config(
@@ -215,7 +216,7 @@ def _render_upload_page():
     st.subheader("Step 3: Review & Edit Extracted Data")
     st.caption("Please review and adjust extracted data before analysis.")
 
-    _cache_key = f"invoice_{uploaded.name}"
+    _cache_key = build_uploaded_file_cache_key(uploaded)
     if _cache_key not in st.session_state:
         with st.spinner("Extracting data from image..."):
             st.session_state[_cache_key] = extract_invoice_data(uploaded)
@@ -344,7 +345,7 @@ def _render_dashboard_page():
             # Step 6f-ii: Build history for multi-turn context (role + content only)
             history = [
                 {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
+                for m in st.session_state.messages[:-1]
             ]
 
             # Step 6f-iii: Run the ReAct agent and render inside scroll container
@@ -380,4 +381,3 @@ if st.session_state.get("page", "dashboard") == "upload":
     _render_upload_page()
 else:
     _render_dashboard_page()
-
