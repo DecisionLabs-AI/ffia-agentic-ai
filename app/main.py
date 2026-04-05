@@ -56,24 +56,6 @@ section[data-testid="stSidebar"] .stMarkdown {
     padding: 1rem 1.25rem !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
-/* ── Sidebar nav items ── */
-.sb-nav-active {
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; border-radius: 8px;
-    background: #1e293b;
-    cursor: default; margin-bottom: 2px;
-}
-.sb-nav-active .sb-label {
-    font-size: 0.95rem; font-weight: 600; color: #f1f5f9; letter-spacing: 0.01em;
-}
-.sb-nav-inactive {
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; border-radius: 8px;
-    cursor: default; margin-bottom: 2px;
-}
-.sb-nav-inactive .sb-label {
-    font-size: 0.95rem; font-weight: 500; color: #64748b; letter-spacing: 0.01em;
-}
 /* ── Bottom account block ── */
 .sb-account {
     display: flex; align-items: center; gap: 10px;
@@ -89,27 +71,41 @@ section[data-testid="stSidebar"] .stMarkdown {
 }
 .sb-acc-name { font-size: 0.9rem; font-weight: 600; color: #e2e8f0; line-height: 1.3; }
 .sb-acc-role { font-size: 0.78rem; color: #475569; line-height: 1.2; }
-/* ── Sidebar nav: hide st.button chrome, overlay on top of HTML div ── */
+/* ── Sidebar nav buttons — base style (inactive) ── */
 section[data-testid="stSidebar"] .stButton > button {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    margin-top: -38px !important;
+    display: flex !important;
+    align-items: center !important;
     width: 100% !important;
-    height: 38px !important;
-    color: transparent !important;
-    font-size: 0 !important;
+    padding: 9px 12px !important;
+    border-radius: 8px !important;
+    border: none !important;
+    background: transparent !important;
+    font-size: 0.95rem !important;
+    font-weight: 500 !important;
+    color: #64748b !important;
+    letter-spacing: 0.01em !important;
     cursor: pointer !important;
     box-shadow: none !important;
-    position: relative;
-    z-index: 1;
+    margin-bottom: 2px !important;
+    justify-content: flex-start !important;
 }
-section[data-testid="stSidebar"] .stButton > button:hover,
-section[data-testid="stSidebar"] .stButton > button:focus {
-    background: transparent !important;
+section[data-testid="stSidebar"] .stButton > button:hover {
+    background: #1e293b !important;
+    color: #cbd5e1 !important;
     border: none !important;
     box-shadow: none !important;
+}
+section[data-testid="stSidebar"] .stButton > button:focus,
+section[data-testid="stSidebar"] .stButton > button:active {
+    box-shadow: none !important;
+    border: none !important;
+    outline: none !important;
+}
+/* Active nav item — key contains "_active" suffix */
+section[data-testid="stSidebar"] [data-testid*="_active"] > button {
+    background: #1e293b !important;
+    color: #f1f5f9 !important;
+    font-weight: 600 !important;
 }
 /* ── Chat input disclaimer — injected below the pinned input bar ── */
 [data-testid="stBottom"] {
@@ -158,40 +154,17 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-    # Step 4c: Nav items — HTML div for visual style + invisible st.button overlay for click
+    # Step 4c: Nav items — pure st.button, styled via CSS by key suffix (_active/_inactive)
+    # Active key triggers the highlighted CSS rule; no HTML div overlay needed.
     _page = st.session_state.get("page", "dashboard")
 
-    # Dashboard nav
-    _dash_cls = "sb-nav-active" if _page == "dashboard" else "sb-nav-inactive"
-    _dash_icon_color = "#93c5fd" if _page == "dashboard" else "#475569"
-    st.markdown(f"""
-<div class="{_dash_cls}">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{_dash_icon_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-    </svg>
-    <span class="sb-label">Dashboard</span>
-</div>
-""", unsafe_allow_html=True)
-    if st.button("Dashboard", key="nav_dashboard", use_container_width=True):
+    _dash_key  = "nav_dashboard_active"  if _page == "dashboard" else "nav_dashboard_inactive"
+    _upload_key = "nav_upload_active"    if _page == "upload"    else "nav_upload_inactive"
+
+    if st.button("  Dashboard",  key=_dash_key,  use_container_width=True):
         st.session_state["page"] = "dashboard"
         st.rerun()
-
-    # Data Upload nav
-    _upload_cls = "sb-nav-active" if _page == "upload" else "sb-nav-inactive"
-    _upload_icon_color = "#93c5fd" if _page == "upload" else "#475569"
-    st.markdown(f"""
-<div class="{_upload_cls}">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{_upload_icon_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="12" y1="18" x2="12" y2="12"/>
-        <polyline points="9 15 12 12 15 15"/>
-    </svg>
-    <span class="sb-label">Data Upload</span>
-</div>
-""", unsafe_allow_html=True)
-    if st.button("Data Upload", key="nav_upload", use_container_width=True):
+    if st.button("  Data Upload", key=_upload_key, use_container_width=True):
         st.session_state["page"] = "upload"
         st.rerun()
 
