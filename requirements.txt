@@ -4,11 +4,12 @@
 # =============================================================================
 
 # --- UI Framework ---
-streamlit>=1.32.0
+streamlit>=1.45.0
 
-# --- LLM + Agent Framework (W2: replaced Anthropic with LangChain + Gemini) ---
+# --- LLM + Agent Framework (W2: LangChain + LangGraph + Gemini via Vertex AI) ---
 langchain>=0.3.0
 langchain-google-vertexai>=2.0.0
+langchain-google-genai>=2.0.0
 langchain-community>=0.3.0
 langgraph>=0.2.0
 
@@ -20,12 +21,9 @@ pyarrow>=14.0.0
 # --- Web Search (DuckDuckGo, no API key required) ---
 ddgs>=9.0.0
 
-# --- Environment Variables (load .env file securely) ---
+# --- Environment Variables ---
 python-dotenv>=1.0.0
 
 # --- Data Processing ---
 pandas>=2.0.0
 requests>=2.31.0
-
-# --- W1 (no longer used in W2+, kept for reference) ---
-# anthropic>=0.25.0

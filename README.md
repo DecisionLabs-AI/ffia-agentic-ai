@@ -1,6 +1,6 @@
-# FFIA — Fuel & Food Impact Analyzer for Restaurants
+# FFIA — Fuel & Food Impact Analyzer
 
-> **MADT 7204 Agentic-AI Project** | Team x | FFIS Optimization for Restaurants
+> **MADT 7204 Vibe Coding Project** | Team 2 | Bangkok Oil Price Crisis
 
 ---
 
@@ -35,6 +35,15 @@ concrete actions — with full reasoning transparency so owners can trust the ou
 
 ---
 
+## Current State (W2)
+
+- **Agent**: LangGraph ReAct agent powered by Gemini 2.5 Flash (Google Vertex AI)
+- **Tools**: BigQuery SQL tool + DuckDuckGo web search tool — both live
+- **UI**: Streamlit chat interface with dark sidebar, reasoning trace expander (collapsed by default)
+- **Data**: Google BigQuery `gcp-madt-ai.data_source` dataset connected
+
+---
+
 ## Agent Design
 
 > Full details in [`docs/architecture.md`](docs/architecture.md)
@@ -42,33 +51,60 @@ concrete actions — with full reasoning transparency so owners can trust the ou
 FFIA is an **agentic AI system** — the AI agent is the product, not a feature bolted onto a dashboard.
 
 ### What the agent does
-1. Fetches today's oil price from the EPPO data source
-2. Reads the restaurant's menu cost sheet (ingredients + delivery fees)
+1. Fetches today's oil price via web search (DuckDuckGo → EPPO data)
+2. Queries the restaurant's menu cost data from Google BigQuery
 3. Calculates the real gross margin per menu item (including hidden fuel costs)
 4. Simulates "what if oil goes up 5 baht?" scenarios
 5. Recommends prioritised pricing or ingredient adjustments
-6. Explains its reasoning step by step (transparent reasoning loop)
+6. Explains its reasoning step by step (transparent ReAct loop)
 
 ### Tools the agent uses
-| Tool | Purpose |
-|---|---|
-| `get_oil_price` | Fetch latest diesel/petrol price from EPPO |
-| `calculate_margin` | Compute gross margin per menu item with fuel-cost adjustment |
-| `simulate_scenario` | Run what-if oil price sensitivity analysis |
-| `load_menu_data` | Read and parse restaurant menu cost sheet |
+| Tool | File | Purpose |
+|---|---|---|
+| `bigquery_tool` | `agent/tools/bigquery_tool.py` | Execute SELECT queries against `gcp-madt-ai.data_source` |
+| `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo (no API key needed) |
 
 ### LLM
-Claude Sonnet (Anthropic) — powers the agent's reasoning and recommendation loop.
+Gemini 2.5 Flash via Google Vertex AI (`langchain-google-vertexai`) — powers the agent's ReAct reasoning loop.
+
+---
+
+## Repository Structure
+
+```
+agentic-ai-mcp/
+├── agent/
+│   ├── main.py                  # LangGraph ReAct agent + run_agent() function
+│   ├── tools/
+│   │   ├── bigquery_tool.py     # BigQuery SQL tool (SELECT only)
+│   │   └── search_tool.py       # DuckDuckGo web search tool
+│   └── prompts/
+│       └── system_prompt.txt    # Agent role, tool guidance, output format
+├── app/
+│   ├── main.py                  # Streamlit chat UI (dark sidebar + reasoning trace)
+│   └── assets/
+│       └── ffia_logo_design.png # Sidebar logo
+├── data/                        # Data scripts and raw files (W3+)
+├── docs/
+│   ├── architecture.md          # Agent architecture documentation
+│   └── rubric-status.md         # Weekly milestone & grading tracker
+├── notebooks/                   # Exploratory notebooks
+├── .env.example                 # Environment variable template (safe to commit)
+├── .gitignore                   # Excludes .env, credentials, __pycache__
+├── CLAUDE.md                    # Claude Code instructions for this project
+├── requirements.txt             # Python dependencies
+└── README.md
+```
 
 ---
 
 ## Data Sources
 
-| Source | Type | URL / Endpoint | How Used |
-|---|---|---|---|
-| EPPO Fuel Prices | Public/Government | https://www.eppo.go.th | Daily oil price fetched by agent |
-| Menu Cost Sheet | Team-Sourced / Synthetic | `/data/raw/menu_costs.csv` | Agent reads per-item ingredient + delivery costs |
-| Scenario Simulation | Synthetic | `/data/scripts/generate_scenarios.py` | Sensitivity analysis for oil price changes |
+| Source | Type | How Used |
+|---|---|---|
+| EPPO Fuel Prices | Public/Government | Daily oil price fetched via web search |
+| Google BigQuery `gcp-madt-ai.data_source` | Cloud Database | Menu cost and margin data queried by agent |
+| DuckDuckGo Web Search | Free API | Real-time news and price lookups |
 
 ---
 
@@ -76,7 +112,8 @@ Claude Sonnet (Anthropic) — powers the agent's reasoning and recommendation lo
 
 ### Prerequisites
 - Python 3.10+
-- An Anthropic API key ([get one here](https://console.anthropic.com/))
+- Google Cloud project with Vertex AI and BigQuery APIs enabled
+- A GCP service account key with BigQuery and Vertex AI permissions
 
 ### Steps
 
@@ -89,8 +126,12 @@ cd agentic-ai-mcp
 # SECURITY: Never commit the real .env file
 cp .env.example .env
 
-# Step 3: Fill in your real API keys in .env
-# (open .env in your editor and replace placeholder values)
+# Step 3: Fill in your GCP credentials in .env
+# Required:
+#   GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
+#   GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+#   BIGQUERY_DATASET=data_source
+#   BIGQUERY_LOCATION=asia-southeast3
 
 # Step 4: Create and activate a Python virtual environment
 python -m venv venv
@@ -99,8 +140,11 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # Step 5: Install dependencies
 pip install -r requirements.txt
 
-# Step 6: Run the agent UI
+# Step 6: Run the Streamlit UI
 streamlit run app/main.py
+
+# Optional: Test the agent via CLI only
+python agent/main.py
 ```
 
 ---
@@ -109,18 +153,21 @@ streamlit run app/main.py
 
 | Tool | What it was used for |
 |---|---|
-| Claude Code (Anthropic) | Scaffolding repo structure, writing agent tools, code review |
-| [Add others as used] | |
+| Claude Code (Anthropic) | Repo scaffolding, agent implementation, UI design, code review |
+| Gemini 2.5 Flash (Google) | LLM powering the ReAct agent reasoning loop |
+| LangChain / LangGraph | Agent framework, tool orchestration |
+| Streamlit | Chat UI and reasoning trace dashboard |
+| Google BigQuery | Restaurant cost data storage and querying |
 
 ---
 
-## Known Limitations & Future Improvements
+## Known Limitations & Next Steps
 
-- **W1 (current)**: Repo structure only — agent not yet built.
-- Oil price data from EPPO is updated daily, not real-time minute-by-minute.
-- Menu cost sheet is currently manually entered — future: integrate with POS system.
-- Delivery fee fuel surcharge is estimated (not pulled from platform API directly).
+- Oil price data from EPPO is fetched via web search — direct API integration planned for W3.
+- Menu cost sheet is currently in BigQuery with synthetic data — real data integration W3+.
+- Margin calculation and scenario simulation tools planned for W3.
+- Multi-agent pattern (Planner + specialist agents) planned for W4+.
 
 ---
 
-*Last updated: W1 — Repo structure & problem statement committed.*
+*Last updated: W2 — LangGraph ReAct agent, Gemini 2.5 Flash, dark sidebar UI, BigQuery + WebSearch live.*
