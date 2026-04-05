@@ -20,7 +20,7 @@ from app.utils.ocr import extract_invoice_data
 # Step 3: Configure the page
 st.set_page_config(
     page_title="FFIA — Restaurant Cost Optimizer",
-    page_icon="🍜",
+    page_icon="📈",
     layout="wide",
 )
 
@@ -318,56 +318,60 @@ def _render_dashboard_page():
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Step 6e: Render existing chat messages from this session
+    # Step 6e: Render chat messages inside a scrollable container
+    # This keeps messages bounded so the page doesn't scroll — input stays at bottom.
     st.subheader("What would you like to analyze today?")
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    _msg_container = st.container(height=480, border=False)
+    with _msg_container:
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-    # Step 6f: Chat input
+    # Step 6f: Chat input — already rendered in Streamlit's fixed stBottom container
     user_input = st.chat_input(
         "e.g. 'What is the current diesel price in Bangkok?' or "
         "'Show me our top 5 highest-cost menu items'"
     )
 
     if user_input:
-        # Step 6f-i: Render the user's message immediately
-        with st.chat_message("user"):
-            st.markdown(user_input)
-
-        # Step 6f-ii: Build history for multi-turn context (role + content only)
-        history = [
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.messages
-        ]
-
-        # Step 6f-iii: Run the ReAct agent and render clean structured trace
-        with st.chat_message("assistant"):
-
-            with st.spinner("FFIA is thinking..."):
-                result = run_agent(user_input, history)
-
-            # intermediate_steps is a list of (tool_name: str, observation: str) tuples
-            steps = result.get("intermediate_steps", [])
-            if steps:
-                with st.expander("Agent Reasoning Trace (click to expand)", expanded=False):
-                    step_num = 1
-                    for tool_name, observation in steps:
-                        st.markdown(f"**Step {step_num} — Action:** `{tool_name}`")
-                        if observation:
-                            st.markdown(f"**Observation:** {str(observation)[:500]}")
-                        st.divider()
-                        step_num += 1
-                    reply = result.get("output", "Sorry, I could not produce an answer.")
-                    st.markdown(f"**Final Answer:** {reply}")
-            else:
-                reply = result.get("output", "Sorry, I could not produce an answer.")
-
-            # Always render the final answer cleanly below the expander
-            st.markdown(reply)
-
-        # Step 6f-iv: Save both turns to session history
+        # Step 6f-i: Append user message and rerender inside the scroll container
         st.session_state.messages.append({"role": "user", "content": user_input})
+
+        with _msg_container:
+            with st.chat_message("user"):
+                st.markdown(user_input)
+
+            # Step 6f-ii: Build history for multi-turn context (role + content only)
+            history = [
+                {"role": m["role"], "content": m["content"]}
+                for m in st.session_state.messages
+            ]
+
+            # Step 6f-iii: Run the ReAct agent and render inside scroll container
+            with st.chat_message("assistant"):
+                with st.spinner("FFIA is thinking..."):
+                    result = run_agent(user_input, history)
+
+                # intermediate_steps is a list of (tool_name: str, observation: str) tuples
+                steps = result.get("intermediate_steps", [])
+                if steps:
+                    with st.expander("Agent Reasoning Trace (click to expand)", expanded=False):
+                        step_num = 1
+                        for tool_name, observation in steps:
+                            st.markdown(f"**Step {step_num} — Action:** `{tool_name}`")
+                            if observation:
+                                st.markdown(f"**Observation:** {str(observation)[:500]}")
+                            st.divider()
+                            step_num += 1
+                        reply = result.get("output", "Sorry, I could not produce an answer.")
+                        st.markdown(f"**Final Answer:** {reply}")
+                else:
+                    reply = result.get("output", "Sorry, I could not produce an answer.")
+
+                # Always render the final answer cleanly below the expander
+                st.markdown(reply)
+
+        # Step 6f-iv: Save assistant turn to session history
         st.session_state.messages.append({"role": "assistant", "content": reply})
 
 
