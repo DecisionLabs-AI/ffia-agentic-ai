@@ -8,11 +8,14 @@
 import sys
 import base64
 from pathlib import Path
+from datetime import date
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Step 2: Streamlit and agent imports
+import pandas as pd
 import streamlit as st
 from agent.main import run_agent
+from app.utils.ocr import extract_invoice_data
 
 # Step 3: Configure the page
 st.set_page_config(
@@ -86,6 +89,28 @@ section[data-testid="stSidebar"] .stMarkdown {
 }
 .sb-acc-name { font-size: 0.9rem; font-weight: 600; color: #e2e8f0; line-height: 1.3; }
 .sb-acc-role { font-size: 0.78rem; color: #475569; line-height: 1.2; }
+/* ── Sidebar nav: hide st.button chrome, overlay on top of HTML div ── */
+section[data-testid="stSidebar"] .stButton > button {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    margin-top: -38px !important;
+    width: 100% !important;
+    height: 38px !important;
+    color: transparent !important;
+    font-size: 0 !important;
+    cursor: pointer !important;
+    box-shadow: none !important;
+    position: relative;
+    z-index: 1;
+}
+section[data-testid="stSidebar"] .stButton > button:hover,
+section[data-testid="stSidebar"] .stButton > button:focus {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
 /* ── Chat input disclaimer — injected below the pinned input bar ── */
 [data-testid="stBottom"] {
     padding-bottom: 0.5rem !important;
@@ -133,19 +158,31 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-    # Step 4c: Nav items — inline SVG icons, no emoji
-    # Dashboard (active) — bar-chart icon
-    # Data Upload (inactive) — upload/document icon
-    st.markdown("""
-<div class="sb-nav-active">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+    # Step 4c: Nav items — HTML div for visual style + invisible st.button overlay for click
+    _page = st.session_state.get("page", "dashboard")
+
+    # Dashboard nav
+    _dash_cls = "sb-nav-active" if _page == "dashboard" else "sb-nav-inactive"
+    _dash_icon_color = "#93c5fd" if _page == "dashboard" else "#475569"
+    st.markdown(f"""
+<div class="{_dash_cls}">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{_dash_icon_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
         <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
         <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
     </svg>
     <span class="sb-label">Dashboard</span>
 </div>
-<div class="sb-nav-inactive">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+""", unsafe_allow_html=True)
+    if st.button("Dashboard", key="nav_dashboard", use_container_width=True):
+        st.session_state["page"] = "dashboard"
+        st.rerun()
+
+    # Data Upload nav
+    _upload_cls = "sb-nav-active" if _page == "upload" else "sb-nav-inactive"
+    _upload_icon_color = "#93c5fd" if _page == "upload" else "#475569"
+    st.markdown(f"""
+<div class="{_upload_cls}">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{_upload_icon_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
         <line x1="12" y1="18" x2="12" y2="12"/>
@@ -154,6 +191,9 @@ with st.sidebar:
     <span class="sb-label">Data Upload</span>
 </div>
 """, unsafe_allow_html=True)
+    if st.button("Data Upload", key="nav_upload", use_container_width=True):
+        st.session_state["page"] = "upload"
+        st.rerun()
 
     # Step 4d: Bottom account block — margin-top:auto pins to sidebar bottom
     st.markdown("""
@@ -171,88 +211,196 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-# Step 5: Header — title and caption only (profile moved to sidebar bottom)
-st.title("FFIA — Fuel & Food Impact Analyzer")
-st.caption(
-    "AI-powered cost optimization for restaurants. Analyze fuel-driven cost impact "
-    "and improve your menu profitability."
-)
-st.divider()
+# Step 5: Data Upload page renderer — OCR → editable form → FFIA analysis
+def _render_upload_page():
+    """Render the Data Upload page: upload image → preview → extract → edit → analyze."""
+    st.title("Data Upload — Invoice Image OCR")
+    st.caption(
+        "Upload a fuel or supplier invoice image to extract cost data, "
+        "review it, and run FFIA analysis."
+    )
+    st.divider()
 
-# Step 6: Build stage banner — W2
-st.info(
-    "**FFIA Agent is ready.** Analyze cost impact, identify margin risk, and get "
-    "actionable recommendations for smarter menu decisions.",
-    icon="✨",
-)
+    # Step 5a: Upload
+    st.subheader("Step 1: Upload Invoice Image")
+    st.caption("Supported formats: JPG, JPEG, PNG")
+    uploaded = st.file_uploader(
+        "Choose invoice image",
+        type=["png", "jpg", "jpeg"],
+        label_visibility="collapsed",
+    )
 
-# Step 7: Placeholder metrics — will show real data from W3+
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric(label="Oil Price Today", value="— baht/L", delta="Ask the agent")
-with col2:
-    st.metric(label="Menu Items Tracked", value="—", delta="Query via BigQuery")
-with col3:
-    st.metric(label="Avg Gross Margin", value="— %", delta="W3 tools")
+    if not uploaded:
+        st.info("Upload an invoice image above to begin.")
+        return
 
-st.divider()
+    # Step 5b: Preview
+    st.subheader("Step 2: Preview")
+    st.image(uploaded, width=480)
 
-# Step 8: Initialize chat history in Streamlit session state
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    # Step 5c: Extract — run once per file, cache in session state
+    st.subheader("Step 3: Review & Edit Extracted Data")
+    st.caption("Please review and adjust extracted data before analysis.")
 
-# Step 9: Render existing chat messages from this session
-st.subheader("What would you like to analyze today?")
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    _cache_key = f"invoice_{uploaded.name}"
+    if _cache_key not in st.session_state:
+        with st.spinner("Extracting data from image..."):
+            st.session_state[_cache_key] = extract_invoice_data(uploaded)
+    data = st.session_state[_cache_key]
 
-# Step 9a: Chat input
-user_input = st.chat_input(
-    "e.g. 'What is the current diesel price in Bangkok?' or "
-    "'Show me our top 5 highest-cost menu items'"
-)
+    # Step 5d: Header fields — two columns
+    _col_a, _col_b = st.columns(2)
+    with _col_a:
+        vendor  = st.text_input("Vendor",     value=data["vendor"])
+        inv_no  = st.text_input("Invoice No", value=data["invoice_no"])
+    with _col_b:
+        inv_date = st.date_input(
+            "Invoice Date",
+            value=date.fromisoformat(data["invoice_date"]),
+        )
+        total = st.number_input(
+            "Total Amount (฿)",
+            value=float(data["total_amount"]),
+            step=0.01,
+            format="%.2f",
+        )
 
-if user_input:
-    # Step 9b: Render the user's message immediately
-    with st.chat_message("user"):
-        st.markdown(user_input)
+    # Step 5e: Line items — editable table
+    st.markdown("**Line Items**")
+    items_df = pd.DataFrame(data["items"])
+    edited_df = st.data_editor(
+        items_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "name":       st.column_config.TextColumn("Item Name"),
+            "qty":        st.column_config.NumberColumn("Qty", step=1),
+            "unit_price": st.column_config.NumberColumn("Unit Price (฿)", format="%.2f"),
+            "total":      st.column_config.NumberColumn("Total (฿)", format="%.2f"),
+        },
+    )
 
-    # Step 9c: Build history for multi-turn context (role + content only)
-    history = [
-        {"role": m["role"], "content": m["content"]}
-        for m in st.session_state.messages
-    ]
+    st.divider()
 
-    # Step 9d: Run the ReAct agent and render clean structured trace
-    with st.chat_message("assistant"):
+    # Step 5f: Analyze button
+    st.subheader("Step 4: Analyze with FFIA")
+    _has_data = len(edited_df) > 0
+    if st.button("Analyze with FFIA", disabled=not _has_data, type="primary"):
+        _prompt = (
+            "Analyze this invoice for fuel-related cost impact and provide cost optimization "
+            "recommendations for a restaurant.\n\n"
+            f"Vendor: {vendor}\n"
+            f"Invoice No: {inv_no}\n"
+            f"Date: {inv_date}\n"
+            f"Total: ฿{total:,.2f}\n\n"
+            f"Line items:\n{edited_df.to_string(index=False)}"
+        )
+        with st.spinner("FFIA is analyzing..."):
+            _result = run_agent(_prompt)
 
-        # Step 9d-i: Run agent with spinner
-        with st.spinner("FFIA is thinking..."):
-            result = run_agent(user_input, history)
+        # Step 5g: FFIA Insight
+        st.subheader("FFIA Insight")
+        st.markdown(_result.get("output", "No response from agent."))
 
-        # Step 9d-ii: Render structured ReAct trace inside expander
-        # intermediate_steps is a list of (tool_name: str, observation: str) tuples
-        steps = result.get("intermediate_steps", [])
-        if steps:
+        _steps = _result.get("intermediate_steps", [])
+        if _steps:
             with st.expander("Agent Reasoning Trace (click to expand)", expanded=False):
-                step_num = 1
-                for tool_name, observation in steps:
-                    st.markdown(f"**Step {step_num} — Action:** `{tool_name}`")
-                    if observation:
-                        st.markdown(f"**Observation:** {str(observation)[:500]}")
+                for _i, (_tool_name, _obs) in enumerate(_steps, 1):
+                    st.markdown(f"**Step {_i} — Action:** `{_tool_name}`")
+                    if _obs:
+                        st.markdown(f"**Observation:** {str(_obs)[:500]}")
                     st.divider()
-                    step_num += 1
+
+
+# Step 6: Dashboard page renderer — all existing chat + metrics logic
+def _render_dashboard_page():
+    """Render the main Dashboard page: header, metrics, chat agent."""
+    # Step 6a: Header
+    st.title("FFIA — Fuel & Food Impact Analyzer")
+    st.caption(
+        "AI-powered cost optimization for restaurants. Analyze fuel-driven cost impact "
+        "and improve your menu profitability."
+    )
+    st.divider()
+
+    # Step 6b: Build stage banner
+    st.info(
+        "**FFIA Agent is ready.** Analyze cost impact, identify margin risk, and get "
+        "actionable recommendations for smarter menu decisions.",
+        icon="✨",
+    )
+
+    # Step 6c: Placeholder metrics — will show real data from W3+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(label="Oil Price Today", value="— baht/L", delta="Ask the agent")
+    with col2:
+        st.metric(label="Menu Items Tracked", value="—", delta="Query via BigQuery")
+    with col3:
+        st.metric(label="Avg Gross Margin", value="— %", delta="W3 tools")
+
+    st.divider()
+
+    # Step 6d: Initialize chat history in Streamlit session state
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Step 6e: Render existing chat messages from this session
+    st.subheader("What would you like to analyze today?")
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # Step 6f: Chat input
+    user_input = st.chat_input(
+        "e.g. 'What is the current diesel price in Bangkok?' or "
+        "'Show me our top 5 highest-cost menu items'"
+    )
+
+    if user_input:
+        # Step 6f-i: Render the user's message immediately
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        # Step 6f-ii: Build history for multi-turn context (role + content only)
+        history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in st.session_state.messages
+        ]
+
+        # Step 6f-iii: Run the ReAct agent and render clean structured trace
+        with st.chat_message("assistant"):
+
+            with st.spinner("FFIA is thinking..."):
+                result = run_agent(user_input, history)
+
+            # intermediate_steps is a list of (tool_name: str, observation: str) tuples
+            steps = result.get("intermediate_steps", [])
+            if steps:
+                with st.expander("Agent Reasoning Trace (click to expand)", expanded=False):
+                    step_num = 1
+                    for tool_name, observation in steps:
+                        st.markdown(f"**Step {step_num} — Action:** `{tool_name}`")
+                        if observation:
+                            st.markdown(f"**Observation:** {str(observation)[:500]}")
+                        st.divider()
+                        step_num += 1
+                    reply = result.get("output", "Sorry, I could not produce an answer.")
+                    st.markdown(f"**Final Answer:** {reply}")
+            else:
                 reply = result.get("output", "Sorry, I could not produce an answer.")
-                st.markdown(f"**Final Answer:** {reply}")
-        else:
-            # Step 9d-iii: No tool calls — just show the direct answer
-            reply = result.get("output", "Sorry, I could not produce an answer.")
 
-        # Step 9d-iv: Always render the final answer cleanly below the expander
-        st.markdown(reply)
+            # Always render the final answer cleanly below the expander
+            st.markdown(reply)
 
-    # Step 9e: Save both turns to session history
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+        # Step 6f-iv: Save both turns to session history
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+
+
+# Step 7: Page router — dispatch to correct page based on session state
+if st.session_state.get("page", "dashboard") == "upload":
+    _render_upload_page()
+else:
+    _render_dashboard_page()
 
