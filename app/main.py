@@ -19,23 +19,6 @@ from app.utils.upload_cache import build_uploaded_file_cache_key
 from data.db import create_tables, invoice_exists, save_invoice, get_recent_invoices
 
 
-# Step 2a: Lazy loader for the ReAct agent — cached for the process lifetime.
-# Deferred import prevents ChatGoogleGenerativeAI + LangGraph from running at Streamlit startup,
-# eliminating ~2-3 seconds of initialization on every page switch / script rerun.
-@st.cache_resource(show_spinner=False)
-def _get_run_agent():
-    from agent.main import run_agent  # noqa: PLC0415
-    return run_agent
-
-
-# Step 2b: Lazy loader for OCR extraction — cached for the process lifetime.
-# Deferred import prevents the Gemini Vision LLM from being instantiated at startup.
-@st.cache_resource(show_spinner=False)
-def _get_extract_invoice_data():
-    from app.utils.ocr import extract_invoice_data  # noqa: PLC0415
-    return extract_invoice_data
-
-
 def _safe_invoice_date(value: object) -> date:
     """Return a valid date for the form even if OCR left the field blank."""
     try:
@@ -72,24 +55,6 @@ def _require_authenticated_user() -> dict:
     if current_user:
         return current_user
 
-    # Step 0: CSS — center the login card and constrain its width to ~480px
-    st.markdown("""
-<style>
-/* Constrain the login form column to a card-like width */
-div[data-testid="stForm"] {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 2rem 2rem 1.5rem 2rem !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
-}
-/* Tighten spacing between form fields */
-div[data-testid="stForm"] .stTextInput {
-    margin-bottom: 0.25rem;
-}
-</style>
-""", unsafe_allow_html=True)
-
     st.markdown(
         "<h2 style='text-align:center;margin-bottom:0.25rem;'>FFIA Sign In</h2>",
         unsafe_allow_html=True,
@@ -100,14 +65,16 @@ div[data-testid="stForm"] .stTextInput {
         unsafe_allow_html=True,
     )
 
-    # Step 0b: Center the form using a narrow middle column (~480px)
+    # Step 0: Center the form in a narrow middle column (~480px).
+    # st.container(border=True) scopes the card styling to this block only —
+    # avoids global CSS that would pollute forms elsewhere in the app.
     _left, _mid, _right = st.columns([1, 2, 1])
     with _mid:
-        with st.form("ffia_login_form", clear_on_submit=False):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
+        with st.container(border=True):
+            with st.form("ffia_login_form", clear_on_submit=False):
+                username = st.text_input("Username")
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
 
     if submitted:
         authenticated_user = authenticate_user(username, password)
@@ -120,12 +87,28 @@ div[data-testid="stForm"] .stTextInput {
 
     st.stop()
 
-# Step 4: Configure the page
+# Step 4: Configure the page — must be the first st.* command
 st.set_page_config(
     page_title="FFIA — Restaurant Cost Optimizer",
     page_icon="📈",
     layout="wide",
 )
+
+# Step 4a: Lazy loader for the ReAct agent — cached for the process lifetime.
+# Defined after set_page_config() per Streamlit's required initialization order.
+# Deferred import prevents ChatGoogleGenerativeAI + LangGraph from running at startup.
+@st.cache_resource(show_spinner=False)
+def _get_run_agent():
+    from agent.main import run_agent  # noqa: PLC0415
+    return run_agent
+
+
+# Step 4b: Lazy loader for OCR extraction — cached for the process lifetime.
+# Deferred import prevents the Gemini Vision LLM from being instantiated at startup.
+@st.cache_resource(show_spinner=False)
+def _get_extract_invoice_data():
+    from app.utils.ocr import extract_invoice_data  # noqa: PLC0415
+    return extract_invoice_data
 
 _current_user = _require_authenticated_user()
 
