@@ -72,13 +72,42 @@ def _require_authenticated_user() -> dict:
     if current_user:
         return current_user
 
-    st.title("FFIA Sign In")
-    st.caption("Sign in to access only your invoices and analysis history.")
+    # Step 0: CSS — center the login card and constrain its width to ~480px
+    st.markdown("""
+<style>
+/* Constrain the login form column to a card-like width */
+div[data-testid="stForm"] {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 2rem 2rem 1.5rem 2rem !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+}
+/* Tighten spacing between form fields */
+div[data-testid="stForm"] .stTextInput {
+    margin-bottom: 0.25rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
-    with st.form("ffia_login_form", clear_on_submit=False):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
+    st.markdown(
+        "<h2 style='text-align:center;margin-bottom:0.25rem;'>FFIA Sign In</h2>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='text-align:center;color:#64748b;margin-bottom:1.75rem;font-size:0.92rem;'>"
+        "Sign in to access only your invoices and analysis history.</p>",
+        unsafe_allow_html=True,
+    )
+
+    # Step 0b: Center the form using a narrow middle column (~480px)
+    _left, _mid, _right = st.columns([1, 2, 1])
+    with _mid:
+        with st.form("ffia_login_form", clear_on_submit=False):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+            submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
 
     if submitted:
         authenticated_user = authenticate_user(username, password)
@@ -86,7 +115,8 @@ def _require_authenticated_user() -> dict:
             st.session_state["auth_user"] = authenticated_user
             st.session_state["page"] = "dashboard"
             st.rerun()
-        st.error("Invalid username or password.")
+        with _mid:
+            st.error("Invalid username or password.")
 
     st.stop()
 
