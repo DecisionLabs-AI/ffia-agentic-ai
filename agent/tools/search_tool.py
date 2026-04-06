@@ -27,7 +27,8 @@ def _build_search_func():
         ddg = DuckDuckGoSearchRun()
         return ddg.run
 
-_search_func = _build_search_func()
+# Step 2b: Lazy singleton — backend is built only on first search, not at import time
+_search_func = None
 
 
 # Step 3: Define tool using @tool decorator (LangChain 1.x compatible)
@@ -38,7 +39,10 @@ def search_tool(query: str) -> str:
     affecting food costs. Input should be a focused English search query.
     Example: 'Bangkok diesel price today THB'
     """
-    # Step 3a: Delegate to whichever search backend was selected at startup
+    # Step 3a: Initialize search backend on first call (lazy — avoids import-time cost)
+    global _search_func
+    if _search_func is None:
+        _search_func = _build_search_func()
     return _search_func(query)
 
 

@@ -29,13 +29,20 @@ logging.basicConfig(
 )
 _log = logging.getLogger("ffia.ocr")
 
-# Step 3: Gemini Vision model — same key as the agent
-_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.getenv("GOOGLE_API_KEY"),
-    temperature=0.0,        # Deterministic extraction
-    max_output_tokens=2048,
-)
+# Step 3: Lazy Gemini Vision singleton — created on first OCR call, not at import time
+_llm = None
+
+def _get_llm():
+    """Return the Gemini Vision model, constructing it once on first call."""
+    global _llm
+    if _llm is None:
+        _llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            temperature=0.0,        # Deterministic extraction
+            max_output_tokens=2048,
+        )
+    return _llm
 
 # Step 4: Extraction prompt — tells Gemini exactly what schema to return
 _EXTRACTION_PROMPT = """
@@ -226,7 +233,7 @@ def extract_invoice_data(uploaded_file: object) -> dict:
 
     # Step 5d: Call Gemini Vision
     try:
-        response = _llm.invoke([message])
+        response = _get_llm().invoke([message])
         raw_text = _coerce_response_text(response.content)
     except Exception as e:
         _log.error("Gemini Vision call failed: %s", e)

@@ -11,13 +11,29 @@ from pathlib import Path
 from datetime import date
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Step 2: Streamlit and agent imports
+# Step 2: Streamlit and lightweight imports only — heavy AI/DB resources are lazy-loaded
 import pandas as pd
 import streamlit as st
-from agent.main import run_agent
-from app.utils.ocr import extract_invoice_data
+from app.utils.auth import authenticate_user, load_auth_users
 from app.utils.upload_cache import build_uploaded_file_cache_key
 from data.db import create_tables, invoice_exists, save_invoice, get_recent_invoices
+
+
+# Step 2a: Lazy loader for the ReAct agent — cached for the process lifetime.
+# Deferred import prevents ChatGoogleGenerativeAI + LangGraph from running at Streamlit startup,
+# eliminating ~2-3 seconds of initialization on every page switch / script rerun.
+@st.cache_resource(show_spinner=False)
+def _get_run_agent():
+    from agent.main import run_agent  # noqa: PLC0415
+    return run_agent
+
+
+# Step 2b: Lazy loader for OCR extraction — cached for the process lifetime.
+# Deferred import prevents the Gemini Vision LLM from being instantiated at startup.
+@st.cache_resource(show_spinner=False)
+def _get_extract_invoice_data():
+    from app.utils.ocr import extract_invoice_data  # noqa: PLC0415
+    return extract_invoice_data
 
 
 def _safe_invoice_date(value: object) -> date:
@@ -33,11 +49,46 @@ def _build_items_df(items: object) -> pd.DataFrame:
     return pd.DataFrame(items or [], columns=["name", "qty", "unit_price", "total"])
 
 
-# Step 3: Ensure PostgreSQL tables exist — idempotent, safe on every cold start
-try:
-    create_tables()
-except Exception as _db_err:
-    st.error(f"Database connection failed: {_db_err}")
+def _clear_user_session() -> None:
+    """Clear per-user session state on logout."""
+    for key in list(st.session_state.keys()):
+        if key == "page":
+            continue
+        del st.session_state[key]
+
+
+def _require_authenticated_user() -> dict:
+    """Render a login form and stop the app until the user is authenticated."""
+    try:
+        load_auth_users()
+    except Exception as exc:
+        st.error(
+            "Authentication is not configured correctly. "
+            f"Update FFIA_AUTH_USERS_JSON before using the app.\n\nDetails: {exc}"
+        )
+        st.stop()
+
+    current_user = st.session_state.get("auth_user")
+    if current_user:
+        return current_user
+
+    st.title("FFIA Sign In")
+    st.caption("Sign in to access only your invoices and analysis history.")
+
+    with st.form("ffia_login_form", clear_on_submit=False):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
+
+    if submitted:
+        authenticated_user = authenticate_user(username, password)
+        if authenticated_user:
+            st.session_state["auth_user"] = authenticated_user
+            st.session_state["page"] = "dashboard"
+            st.rerun()
+        st.error("Invalid username or password.")
+
+    st.stop()
 
 # Step 4: Configure the page
 st.set_page_config(
@@ -45,6 +96,17 @@ st.set_page_config(
     page_icon="📈",
     layout="wide",
 )
+
+_current_user = _require_authenticated_user()
+
+# Step 3: Ensure PostgreSQL tables exist — run once per session, not on every rerun
+if not st.session_state.get("_tables_created"):
+    try:
+        create_tables()
+        st.session_state["_tables_created"] = True
+    except Exception as _db_err:
+        st.error(f"Database connection failed: {_db_err}")
+        st.stop()
 
 # Step 3a: CSS — dark sidebar, metric cards
 st.markdown("""
@@ -189,9 +251,12 @@ with st.sidebar:
     if st.button("  Data Upload", key=_upload_key, use_container_width=True):
         st.session_state["page"] = "upload"
         st.rerun()
+    if st.button("Logout", key="nav_logout", use_container_width=True):
+        _clear_user_session()
+        st.rerun()
 
     # Step 4d: Bottom account block — margin-top:auto pins to sidebar bottom
-    st.markdown("""
+    st.markdown(f"""
 <div class="sb-account">
     <div class="sb-avatar">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -200,14 +265,14 @@ with st.sidebar:
         </svg>
     </div>
     <div>
-        <div class="sb-acc-name">Admin</div>
-        <div class="sb-acc-role">Powered by FFIA Solutions</div>
+        <div class="sb-acc-name">{_current_user["display_name"]}</div>
+        <div class="sb-acc-role">@{_current_user["username"]}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # Step 6: Data Upload page renderer — OCR → editable form → FFIA analysis
-def _render_upload_page():
+def _render_upload_page(current_user: dict):
     """Render the Data Upload page: upload image → preview → extract → edit → analyze."""
     st.title("Data Upload — Invoice Image OCR")
     st.caption(
@@ -240,7 +305,7 @@ def _render_upload_page():
     _cache_key = build_uploaded_file_cache_key(uploaded)
     if _cache_key not in st.session_state:
         with st.spinner("Extracting data from image..."):
-            st.session_state[_cache_key] = extract_invoice_data(uploaded)
+            st.session_state[_cache_key] = _get_extract_invoice_data()(uploaded)
     data = st.session_state[_cache_key]
     _ocr_error = data.get("_ocr_error", "")
     _raw_ocr = data.get("_ocr_raw_response", "")
@@ -304,10 +369,11 @@ def _render_upload_page():
         if st.button("Save Invoice to Database", type="primary", use_container_width=True):
             try:
                 _invoice_no = str(inv_no).strip()
-                if invoice_exists(_invoice_no):
+                if invoice_exists(current_user["user_id"], _invoice_no):
                     st.warning("⚠️ This invoice already exists")
                 else:
                     _inv_id = save_invoice(
+                        user_id=current_user["user_id"],
                         vendor=vendor,
                         invoice_no=_invoice_no,
                         invoice_date=inv_date,
@@ -321,7 +387,7 @@ def _render_upload_page():
     # Step 5g: Recent saved invoices
     with st.expander("Recent Saved Invoices", expanded=False):
         try:
-            _recent = get_recent_invoices()
+            _recent = get_recent_invoices(current_user["user_id"])
             if _recent:
                 st.dataframe(pd.DataFrame(_recent), use_container_width=True)
             else:
@@ -345,7 +411,7 @@ def _render_upload_page():
             f"Line items:\n{edited_df.to_string(index=False)}"
         )
         with st.spinner("FFIA is analyzing..."):
-            _result = run_agent(_prompt)
+            _result = _get_run_agent()(_prompt, current_user_id=current_user["user_id"])
 
         # Step 5i: FFIA Insight
         st.subheader("FFIA Insight")
@@ -362,7 +428,7 @@ def _render_upload_page():
 
 
 # Step 7: Dashboard page renderer — all existing chat + metrics logic
-def _render_dashboard_page():
+def _render_dashboard_page(current_user: dict):
     """Render the main Dashboard page: header, metrics, chat agent."""
     # Step 6a: Header
     st.title("FFIA — Fuel & Food Impact Analyzer")
@@ -384,7 +450,7 @@ def _render_dashboard_page():
     with col1:
         st.metric(label="Oil Price Today", value="— baht/L", delta="Ask the agent")
     with col2:
-        st.metric(label="Menu Items Tracked", value="—", delta="Query via BigQuery")
+        st.metric(label="Menu Items Tracked", value="—", delta="Query via PostgreSQL")
     with col3:
         st.metric(label="Avg Gross Margin", value="— %", delta="W3 tools")
 
@@ -426,7 +492,7 @@ def _render_dashboard_page():
             # Step 6f-iii: Run the ReAct agent and render inside scroll container
             with st.chat_message("assistant"):
                 with st.spinner("FFIA is thinking..."):
-                    result = run_agent(user_input, history)
+                    result = _get_run_agent()(user_input, history, current_user_id=current_user["user_id"])
 
                 # intermediate_steps is a list of (tool_name: str, observation: str) tuples
                 steps = result.get("intermediate_steps", [])
@@ -453,6 +519,6 @@ def _render_dashboard_page():
 
 # Step 8: Page router — dispatch to correct page based on session state
 if st.session_state.get("page", "dashboard") == "upload":
-    _render_upload_page()
+    _render_upload_page(_current_user)
 else:
-    _render_dashboard_page()
+    _render_dashboard_page(_current_user)

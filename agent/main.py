@@ -27,7 +27,11 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 # Step 4: Import tools built in agent/tools/
-from agent.tools.postgres_tool import postgres_tool
+from agent.tools.postgres_tool import (
+    postgres_tool,
+    reset_postgres_tool_user_id,
+    set_postgres_tool_user_id,
+)
 from agent.tools.search_tool import search_tool
 from data.db import get_latest_invoice
 
@@ -57,27 +61,28 @@ def _validate_env():
 _validate_env()
 
 
-# Step 7: Initialize Gemini 2.5 Flash via Google AI API key
-# ChatGoogleGenerativeAI uses GOOGLE_API_KEY from .env — no service account needed
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.getenv("GOOGLE_API_KEY"),
-    temperature=0.1,            # Deterministic output for data analysis
-    max_output_tokens=2048,
-)
+# Step 7: Lazy agent singleton — created only on first run_agent() call, not at import time.
+# This prevents Gemini LLM + LangGraph graph construction from running on every Streamlit rerun.
+_agent_instance = None
 
-# Step 8: Collect tools and load system prompt
-tools = [postgres_tool, search_tool]
-system_prompt = _load_system_prompt()
-
-# Step 9: Create LangGraph ReAct agent
-# create_react_agent handles the Thought/Action/Observation loop internally
-# prompt= injects the system message so the agent knows its FFIA role
-agent = create_react_agent(
-    model=llm,
-    tools=tools,
-    prompt=system_prompt,
-)
+def _get_agent():
+    """Return the LangGraph ReAct agent, constructing it once on first call."""
+    global _agent_instance
+    if _agent_instance is None:
+        # Step 7a: Build LLM
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            temperature=0.1,            # Deterministic output for data analysis
+            max_output_tokens=2048,
+        )
+        # Step 7b: Build agent graph (Thought/Action/Observation loop)
+        _agent_instance = create_react_agent(
+            model=llm,
+            tools=[postgres_tool, search_tool],
+            prompt=_load_system_prompt(),
+        )
+    return _agent_instance
 
 
 # Step 10: Helper — normalize Gemini's content block list to a plain string
@@ -206,7 +211,12 @@ def _extract_intermediate_steps(messages: list) -> list[tuple[str, str]]:
 
 
 # Step 11: Public function called by app/main.py
-def run_agent(user_message: str, chat_history: list = None, callbacks: list = None) -> dict:
+def run_agent(
+    user_message: str,
+    chat_history: list = None,
+    callbacks: list = None,
+    current_user_id: str | None = None,
+) -> dict:
     """
     Run the FFIA ReAct agent and return a normalized result dict.
 
@@ -214,6 +224,7 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
         user_message: The user's question or input.
         chat_history: List of previous turns (kept for API compat, unused in ReAct).
         callbacks: LangChain callbacks, e.g. [StreamlitCallbackHandler(...)].
+        current_user_id: Authenticated tenant identifier for invoice scoping.
 
     Returns:
         dict with keys:
@@ -225,7 +236,10 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
     invoice_context_requested = _should_inject_latest_invoice(user_message)
     if invoice_context_requested:
         try:
-            latest_invoice = get_latest_invoice()
+            if current_user_id:
+                latest_invoice = get_latest_invoice(current_user_id)
+            else:
+                invoice_context_error = "No authenticated user context was provided."
         except Exception as exc:
             invoice_context_error = str(exc)
 
@@ -237,10 +251,14 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
         invoice_context_requested,
         invoice_context_error,
     )
-    result = agent.invoke(
-        {"messages": agent_messages},
-        config={"callbacks": callbacks or []}
-    )
+    user_token = set_postgres_tool_user_id(current_user_id)
+    try:
+        result = _get_agent().invoke(
+            {"messages": agent_messages},
+            config={"callbacks": callbacks or []}
+        )
+    finally:
+        reset_postgres_tool_user_id(user_token)
 
     # Step 10b: Extract final answer — normalize Gemini's content block list to plain string
     messages = result.get("messages", [])
