@@ -1,7 +1,7 @@
 # =============================================================================
 # FFIA — agent/main.py
-# W2: LangGraph ReAct agent with Gemini 1.5 (Vertex AI) + 2 tools:
-#   - BigQuerySQL: query restaurant cost data
+# LangGraph ReAct agent with Gemini 2.5 Flash (Google AI API) + 2 tools:
+#   - PostgreSQL: query restaurant cost data
 #   - WebSearch: look up Bangkok oil prices and Thai fuel news
 # =============================================================================
 
@@ -20,12 +20,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Step 3: LangChain + LangGraph imports
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 # Step 4: Import tools built in agent/tools/
-from agent.tools.bigquery_tool import bigquery_tool
+from agent.tools.bigquery_tool import postgres_tool
 from agent.tools.search_tool import search_tool
 
 
@@ -39,14 +39,14 @@ def _load_system_prompt() -> str:
     return "You are FFIA, a restaurant cost optimization AI assistant for Bangkok."
 
 
-# Step 6: Validate required GCP environment variables at import time
+# Step 6: Validate required environment variables at import time
 def _validate_env():
     """Warn loudly if critical credentials are missing."""
     missing = []
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        missing.append("GOOGLE_APPLICATION_CREDENTIALS")
-    if not os.getenv("GOOGLE_CLOUD_PROJECT"):
-        missing.append("GOOGLE_CLOUD_PROJECT")
+    if not os.getenv("GOOGLE_API_KEY"):
+        missing.append("GOOGLE_API_KEY")
+    if not os.getenv("DATABASE_URL"):
+        missing.append("DATABASE_URL")
     if missing:
         print(f"WARNING: Missing env vars: {', '.join(missing)}. "
               "Copy .env.example to .env and set these values.", file=sys.stderr)
@@ -54,18 +54,17 @@ def _validate_env():
 _validate_env()
 
 
-# Step 7: Initialize Gemini 1.5 via Vertex AI
-# ChatVertexAI uses GOOGLE_APPLICATION_CREDENTIALS (ADC) automatically
-llm = ChatVertexAI(
-    model_name="gemini-2.5-flash",
-    project=os.getenv("GOOGLE_CLOUD_PROJECT", "gcp-madt-ai"),
-    location="us-central1",   # Nearest Vertex AI region to Bangkok
+# Step 7: Initialize Gemini 2.5 Flash via Google AI API key
+# ChatGoogleGenerativeAI uses GOOGLE_API_KEY from .env — no service account needed
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    google_api_key=os.getenv("GOOGLE_API_KEY"),
     temperature=0.1,            # Deterministic output for data analysis
     max_output_tokens=2048,
 )
 
 # Step 8: Collect tools and load system prompt
-tools = [bigquery_tool, search_tool]
+tools = [postgres_tool, search_tool]
 system_prompt = _load_system_prompt()
 
 # Step 9: Create LangGraph ReAct agent

@@ -1,55 +1,54 @@
 # =============================================================================
-# FFIA — BigQuery SQL Execution Tool (W2)
-# Allows the ReAct agent to query restaurant cost data from BigQuery.
+# FFIA — PostgreSQL SQL Execution Tool
+# Allows the ReAct agent to query restaurant cost data from PostgreSQL.
 # =============================================================================
 
 # Step 1: Imports
 import os
 import re
+import pandas as pd
+import psycopg2
 from dotenv import load_dotenv
-from google.cloud import bigquery
 from langchain_core.tools import tool
 
 load_dotenv()
 
-# Step 2: Read project and dataset from environment (never hardcoded)
-GCP_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "gcp-madt-ai")
-BQ_DATASET = os.getenv("BIGQUERY_DATASET", "data_source")
-BQ_LOCATION = os.getenv("BIGQUERY_LOCATION", "asia-southeast3")
+# Step 2: Read database connection URL from environment (never hardcoded)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Step 3: Interim FFIA schema contract — gives the LLM a concrete target for SQL generation.
-# If the live dataset differs, the agent should inspect INFORMATION_SCHEMA first.
-TABLE_SCHEMA_DESCRIPTION = f"""
-FFIA BigQuery schema guidance for dataset `{GCP_PROJECT}.{BQ_DATASET}`:
+# If the live schema differs, the agent should inspect information_schema first.
+TABLE_SCHEMA_DESCRIPTION = """
+FFIA PostgreSQL schema guidance:
 
 Primary analysis tables:
-1. `{GCP_PROJECT}.{BQ_DATASET}.restaurant_costs`
+1. restaurant_costs
    Columns:
-   - restaurant_id (STRING)
-   - restaurant_name (STRING)
-   - menu_item (STRING)
-   - ingredient_cost_thb (FLOAT)
-   - packaging_cost_thb (FLOAT)
-   - delivery_fee_thb (FLOAT)
-   - fuel_surcharge_thb (FLOAT)
-   - selling_price_thb (FLOAT)
+   - restaurant_id (TEXT)
+   - restaurant_name (TEXT)
+   - menu_item (TEXT)
+   - ingredient_cost_thb (NUMERIC)
+   - packaging_cost_thb (NUMERIC)
+   - delivery_fee_thb (NUMERIC)
+   - fuel_surcharge_thb (NUMERIC)
+   - selling_price_thb (NUMERIC)
    - recorded_date (DATE)
 
-2. `{GCP_PROJECT}.{BQ_DATASET}.oil_prices`
+2. oil_prices
    Columns:
    - price_date (DATE)
-   - diesel_price_thb (FLOAT)
-   - gasohol_91_price_thb (FLOAT)
-   - gasohol_95_price_thb (FLOAT)
-   - source (STRING)
-   - region (STRING)
+   - diesel_price_thb (NUMERIC)
+   - gasohol_91_price_thb (NUMERIC)
+   - gasohol_95_price_thb (NUMERIC)
+   - source (TEXT)
+   - region (TEXT)
 
 Querying rules:
-- Always use fully-qualified table names.
-- For menu margin questions, start with `restaurant_costs`.
-- For oil and fuel trend questions, start with `oil_prices`.
-- If a requested column or table may differ in the live dataset, inspect
-  `{GCP_PROJECT}.{BQ_DATASET}.INFORMATION_SCHEMA.COLUMNS` first with a SELECT query.
+- Use standard table names (no project/dataset prefix).
+- For menu margin questions, start with restaurant_costs.
+- For oil and fuel trend questions, start with oil_prices.
+- If a requested column or table may not exist, inspect
+  information_schema.columns first with a SELECT query.
 """
 
 _BLOCK_COMMENT_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -65,7 +64,7 @@ _FORBIDDEN_SQL_PATTERNS = [
     (re.compile(r"\bDROP\b", re.IGNORECASE), "DROP"),
     (re.compile(r"\bALTER\b", re.IGNORECASE), "ALTER"),
     (re.compile(r"\bTRUNCATE\b", re.IGNORECASE), "TRUNCATE"),
-    (re.compile(r"\bEXECUTE\s+IMMEDIATE\b", re.IGNORECASE), "EXECUTE IMMEDIATE"),
+    (re.compile(r"\bEXECUTE\b", re.IGNORECASE), "EXECUTE"),
     (re.compile(r"(?m)^\s*BEGIN\b", re.IGNORECASE), "BEGIN"),
     (re.compile(r"(?m)^\s*END\b", re.IGNORECASE), "END"),
     (re.compile(r"\bCALL\b", re.IGNORECASE), "CALL"),
@@ -118,16 +117,16 @@ def _validate_select_sql(sql: str) -> tuple[bool, str]:
 
 # Step 4: Define tool using @tool decorator (LangChain 1.x compatible)
 @tool
-def bigquery_tool(sql: str) -> str:
-    """Use this tool to query restaurant cost and oil price data from BigQuery.
+def postgres_tool(sql: str) -> str:
+    """Use this tool to query restaurant cost and oil price data from the PostgreSQL database.
 
-    Input MUST be exactly one SQL SELECT statement using fully-qualified table names.
+    Input MUST be exactly one SQL SELECT statement.
     SELECT statements may begin with SELECT or WITH, but scripting, DDL, mutations,
     CALL statements, and semicolon-delimited multi-statement execution are blocked.
 
     Example:
     SELECT menu_item, selling_price_thb
-    FROM `gcp-madt-ai.data_source.restaurant_costs`
+    FROM restaurant_costs
     LIMIT 5
     """
     # Step 4a: Security guardrail — enforce a single safe SELECT statement.
@@ -135,35 +134,35 @@ def bigquery_tool(sql: str) -> str:
     if not is_valid:
         return validated_sql_or_error
 
+    if not DATABASE_URL:
+        return "Error: DATABASE_URL is not set. Add it to your .env file."
+
     try:
-        # Step 4b: Initialize BigQuery client (picks up GOOGLE_APPLICATION_CREDENTIALS from env)
-        client = bigquery.Client(project=GCP_PROJECT)
         safe_sql = validated_sql_or_error
 
-        # Step 4c: Inject LIMIT 50 if not already present to cap cost/output
+        # Step 4b: Inject LIMIT 50 if not already present to cap output
         if "LIMIT" not in safe_sql.upper():
             safe_sql = safe_sql + " LIMIT 50"
 
-        # Step 4d: Execute query
-        query_job = client.query(safe_sql, location=BQ_LOCATION)
-        df = query_job.to_dataframe()
+        # Step 4c: Execute query via psycopg2
+        with psycopg2.connect(DATABASE_URL) as conn:
+            df = pd.read_sql_query(safe_sql, conn)
 
-        # Step 4e: Return empty message or markdown table
+        # Step 4d: Return empty message or markdown table
         if df.empty:
             return "Query returned no results."
         return df.to_markdown(index=False)
 
     except Exception as e:
-        # Step 4f: Return error string — never raise, so agent can handle gracefully
-        return f"BigQuery error: {str(e)}"
+        # Step 4e: Return error string — never raise, so agent can handle gracefully
+        return f"PostgreSQL error: {str(e)}"
 
 
 # Step 5: Standalone test block
 if __name__ == "__main__":
-    print("Testing BigQuery tool...")
-    test_sql = f"SELECT * FROM `{GCP_PROJECT}.{BQ_DATASET}.INFORMATION_SCHEMA.TABLES`"
-    result = bigquery_tool.invoke(test_sql)
+    print("Testing PostgreSQL tool...")
+    result = postgres_tool.invoke("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
     print(result)
 
 
-bigquery_tool.description = f"{bigquery_tool.description}\n\n{TABLE_SCHEMA_DESCRIPTION.strip()}"
+postgres_tool.description = f"{postgres_tool.description}\n\n{TABLE_SCHEMA_DESCRIPTION.strip()}"
