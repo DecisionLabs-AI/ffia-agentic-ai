@@ -37,10 +37,10 @@ concrete actions — with full reasoning transparency so owners can trust the ou
 
 ## Current State (W2)
 
-- **Agent**: LangGraph ReAct agent powered by Gemini 2.5 Flash (Google Vertex AI)
-- **Tools**: BigQuery SQL tool + DuckDuckGo web search tool — both live
+- **Agent**: LangGraph ReAct agent powered by Gemini 2.5 Flash (Google AI API)
+- **Tools**: PostgreSQL SQL tool + DuckDuckGo web search tool — both live
 - **UI**: Streamlit chat interface with dark sidebar, reasoning trace expander (collapsed by default)
-- **Data**: Google BigQuery `gcp-madt-ai.data_source` dataset connected
+- **Data**: PostgreSQL connected via `DATABASE_URL`, including saved invoice records
 
 ---
 
@@ -52,20 +52,21 @@ FFIA is an **agentic AI system** — the AI agent is the product, not a feature 
 
 ### What the agent does
 1. Fetches today's oil price via web search (DuckDuckGo → EPPO data)
-2. Queries the restaurant's menu cost data from Google BigQuery
+2. Queries restaurant cost and oil-price data from PostgreSQL
 3. Calculates the real gross margin per menu item (including hidden fuel costs)
 4. Simulates "what if oil goes up 5 baht?" scenarios
 5. Recommends prioritised pricing or ingredient adjustments
-6. Explains its reasoning step by step (transparent ReAct loop)
+6. Can use the latest saved invoice from PostgreSQL when the user asks about an invoice
+7. Explains its reasoning step by step (transparent ReAct loop)
 
 ### Tools the agent uses
 | Tool | File | Purpose |
 |---|---|---|
-| `bigquery_tool` | `agent/tools/bigquery_tool.py` | Execute SELECT queries against `gcp-madt-ai.data_source` |
+| `postgres_tool` | `agent/tools/postgres_tool.py` | Execute SELECT queries against PostgreSQL with read-only guardrails |
 | `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo (no API key needed) |
 
 ### LLM
-Gemini 2.5 Flash via Google Vertex AI (`langchain-google-vertexai`) — powers the agent's ReAct reasoning loop.
+Gemini 2.5 Flash via Google AI API (`langchain-google-genai`) — powers the agent's ReAct reasoning loop.
 
 ---
 
@@ -76,15 +77,18 @@ agentic-ai-mcp/
 ├── agent/
 │   ├── main.py                  # LangGraph ReAct agent + run_agent() function
 │   ├── tools/
-│   │   ├── bigquery_tool.py     # BigQuery SQL tool (SELECT only)
+│   │   ├── postgres_tool.py     # PostgreSQL SQL tool (SELECT only)
 │   │   └── search_tool.py       # DuckDuckGo web search tool
 │   └── prompts/
 │       └── system_prompt.txt    # Agent role, tool guidance, output format
 ├── app/
 │   ├── main.py                  # Streamlit chat UI (dark sidebar + reasoning trace)
+│   ├── utils/
+│   │   └── ocr.py               # OCR extraction and JSON cleanup for invoice uploads
 │   └── assets/
 │       └── ffia_logo_design.png # Sidebar logo
-├── data/                        # Data scripts and raw files (W3+)
+├── data/
+│   └── db.py                    # PostgreSQL connection helpers and invoice CRUD
 ├── docs/
 │   ├── architecture.md          # Agent architecture documentation
 │   └── rubric-status.md         # Weekly milestone & grading tracker
@@ -103,7 +107,7 @@ agentic-ai-mcp/
 | Source | Type | How Used |
 |---|---|---|
 | EPPO Fuel Prices | Public/Government | Daily oil price fetched via web search |
-| Google BigQuery `gcp-madt-ai.data_source` | Cloud Database | Menu cost and margin data queried by agent |
+| PostgreSQL | Cloud Database | Restaurant cost, oil-price, and saved invoice data queried by the app and agent |
 | DuckDuckGo Web Search | Free API | Real-time news and price lookups |
 
 ---
@@ -112,8 +116,8 @@ agentic-ai-mcp/
 
 ### Prerequisites
 - Python 3.10+
-- Google Cloud project with Vertex AI and BigQuery APIs enabled
-- A GCP service account key with BigQuery and Vertex AI permissions
+- Google AI API key for Gemini
+- PostgreSQL database accessible via connection URL
 
 ### Steps
 
@@ -126,12 +130,10 @@ cd agentic-ai-mcp
 # SECURITY: Never commit the real .env file
 cp .env.example .env
 
-# Step 3: Fill in your GCP credentials in .env
+# Step 3: Fill in your runtime credentials in .env
 # Required:
-#   GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
-#   GOOGLE_CLOUD_PROJECT=your-gcp-project-id
-#   BIGQUERY_DATASET=data_source
-#   BIGQUERY_LOCATION=asia-southeast3
+#   GOOGLE_API_KEY=your_gemini_api_key_here
+#   DATABASE_URL=postgresql://user:password@host:5432/dbname
 
 # Step 4: Create and activate a Python virtual environment
 python -m venv venv
@@ -158,17 +160,17 @@ python agent/main.py
 | Gemini 2.5 Flash (Google) | LLM powering the ReAct agent reasoning loop |
 | LangChain / LangGraph | Agent framework, tool orchestration |
 | Streamlit | Chat UI and reasoning trace dashboard |
-| Google BigQuery | Restaurant cost data storage and querying |
+| PostgreSQL | Restaurant cost and invoice data storage/querying |
 
 ---
 
 ## Known Limitations & Next Steps
 
 - Oil price data from EPPO is fetched via web search — direct API integration planned for W3.
-- Menu cost sheet is currently in BigQuery with synthetic data — real data integration W3+.
+- Some restaurant cost data is still seeded/synthetic — broader real-data integration is planned for W3+.
 - Margin calculation and scenario simulation tools planned for W3.
 - Multi-agent pattern (Planner + specialist agents) planned for W4+.
 
 ---
 
-*Last updated: W2 — LangGraph ReAct agent, Gemini 2.5 Flash, dark sidebar UI, BigQuery + WebSearch live.*
+*Last updated: W2 — LangGraph ReAct agent, Gemini 2.5 Flash, dark sidebar UI, PostgreSQL + WebSearch live.*
