@@ -32,6 +32,7 @@ def _build_items_df(items: object) -> pd.DataFrame:
     return pd.DataFrame(items or [], columns=["name", "qty", "unit_price", "total"])
 
 
+
 def _clear_user_session() -> None:
     """Clear per-user session state on logout."""
     for key in list(st.session_state.keys()):
@@ -168,7 +169,7 @@ section[data-testid="stSidebar"] .stMarkdown {
 }
 .sb-acc-name { font-size: 0.9rem; font-weight: 600; color: #e2e8f0; line-height: 1.3; }
 .sb-acc-role { font-size: 0.78rem; color: #475569; line-height: 1.2; }
-/* ── Sidebar nav buttons — base style (inactive) ── */
+/* ── Sidebar nav buttons ── */
 section[data-testid="stSidebar"] .stButton > button {
     display: flex !important;
     align-items: center !important;
@@ -187,7 +188,6 @@ section[data-testid="stSidebar"] .stButton > button {
     margin-bottom: 2px !important;
     text-align: left !important;
 }
-/* Streamlit wraps button text in a <p> — force it left-aligned too */
 section[data-testid="stSidebar"] .stButton > button p {
     text-align: left !important;
     margin: 0 !important;
@@ -204,7 +204,7 @@ section[data-testid="stSidebar"] .stButton > button:active {
     border: none !important;
     outline: none !important;
 }
-/* Active nav item — key contains "_active" suffix */
+/* Active nav item — key suffix _active triggers highlight */
 section[data-testid="stSidebar"] [data-testid*="_active"] > button {
     background: #1e293b !important;
     color: #f1f5f9 !important;
@@ -257,14 +257,13 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-    # Step 4c: Nav items — pure st.button, styled via CSS by key suffix (_active/_inactive)
-    # Active key triggers the highlighted CSS rule; no HTML div overlay needed.
+    # Step 4c: Nav items — plain st.button, CSS-keyed active highlight via _active/_inactive suffix
     _page = st.session_state.get("page", "dashboard")
 
-    _dash_key  = "nav_dashboard_active"  if _page == "dashboard" else "nav_dashboard_inactive"
-    _upload_key = "nav_upload_active"    if _page == "upload"    else "nav_upload_inactive"
+    _dash_key   = "nav_dashboard_active"  if _page == "dashboard" else "nav_dashboard_inactive"
+    _upload_key = "nav_upload_active"     if _page == "upload"    else "nav_upload_inactive"
 
-    if st.button("Dashboard",  key=_dash_key,  use_container_width=True):
+    if st.button("Dashboard",   key=_dash_key,   use_container_width=True):
         st.session_state["page"] = "dashboard"
         st.rerun()
     if st.button("Data Upload", key=_upload_key, use_container_width=True):
