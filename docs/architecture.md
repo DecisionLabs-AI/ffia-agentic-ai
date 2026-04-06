@@ -52,7 +52,7 @@ User (Streamlit Chat UI — dark sidebar)
 ### 2. Tools
 | Tool | File | Description |
 |---|---|---|
-| `postgres_tool` | `agent/tools/bigquery_tool.py` | Executes SELECT queries against PostgreSQL (restaurant_costs, oil_prices) |
+| `postgres_tool` | `agent/tools/postgres_tool.py` | Executes SELECT queries against PostgreSQL (restaurant_costs, oil_prices) |
 | `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo — no API key required |
 
 **Security guardrails on PostgreSQL tool:**
@@ -81,7 +81,7 @@ User (Streamlit Chat UI — dark sidebar)
 | File | Purpose |
 |---|---|
 | `agent/main.py` | LangGraph agent setup, `run_agent()` public function, `_extract_text()` Gemini content normalizer |
-| `agent/tools/bigquery_tool.py` | PostgreSQL SQL execution tool (`@tool` decorator, exposes `postgres_tool`) |
+| `agent/tools/postgres_tool.py` | PostgreSQL SQL execution tool (`@tool` decorator, exposes `postgres_tool`) |
 | `agent/tools/search_tool.py` | DuckDuckGo web search tool |
 | `agent/prompts/system_prompt.txt` | Agent role, tool guidance, output format |
 | `app/main.py` | Streamlit chat UI — dark sidebar, metric cards, chat loop, reasoning trace |

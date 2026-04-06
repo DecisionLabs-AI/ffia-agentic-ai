@@ -25,7 +25,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 # Step 4: Import tools built in agent/tools/
-from agent.tools.bigquery_tool import postgres_tool
+from agent.tools.postgres_tool import postgres_tool
 from agent.tools.search_tool import search_tool
 
 
