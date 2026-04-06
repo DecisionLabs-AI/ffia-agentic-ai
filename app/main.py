@@ -1,7 +1,7 @@
 # =============================================================================
 # FFIA — app/main.py
-# Streamlit Chat UI — W2: wired to LangChain ReAct agent (Gemini 1.5).
-# Displays agent reasoning trace (Thought/Action/Observation) in st.expander.
+# Streamlit Chat UI — wired to LangChain ReAct agent (Gemini 2.5 Flash).
+# Data Upload page persists invoices to PostgreSQL via data/db.py.
 # =============================================================================
 
 # Step 1: Add project root to path so agent/ package can be imported
@@ -17,8 +17,15 @@ import streamlit as st
 from agent.main import run_agent
 from app.utils.ocr import extract_invoice_data
 from app.utils.upload_cache import build_uploaded_file_cache_key
+from data.db import create_tables, save_invoice, get_recent_invoices
 
-# Step 3: Configure the page
+# Step 3: Ensure PostgreSQL tables exist — idempotent, safe on every cold start
+try:
+    create_tables()
+except Exception as _db_err:
+    st.error(f"Database connection failed: {_db_err}")
+
+# Step 4: Configure the page
 st.set_page_config(
     page_title="FFIA — Restaurant Cost Optimizer",
     page_icon="📈",
@@ -124,7 +131,7 @@ section[data-testid="stSidebar"] [data-testid*="_active"] > button {
 </style>
 """, unsafe_allow_html=True)
 
-# Step 4: Sidebar — dark navy: brand block + nav + bottom account
+# Step 5: Sidebar — dark navy: brand block + nav + bottom account
 with st.sidebar:
     # Step 4a: Load logo as base64; fall back to "F" badge on dark bg if missing
     _logo_path = Path(__file__).parent / "assets" / "ffia_logo_design.png"
@@ -185,7 +192,7 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-# Step 5: Data Upload page renderer — OCR → editable form → FFIA analysis
+# Step 6: Data Upload page renderer — OCR → editable form → FFIA analysis
 def _render_upload_page():
     """Render the Data Upload page: upload image → preview → extract → edit → analyze."""
     st.title("Data Upload — Invoice Image OCR")
@@ -256,10 +263,40 @@ def _render_upload_page():
 
     st.divider()
 
-    # Step 5f: Analyze button
-    st.subheader("Step 4: Analyze with FFIA")
+    # Step 5f: Save to database button
+    st.subheader("Step 4: Save Invoice")
+    _col_save, _ = st.columns([1, 3])
+    with _col_save:
+        if st.button("Save Invoice to Database", type="primary", use_container_width=True):
+            try:
+                _inv_id = save_invoice(
+                    vendor=vendor,
+                    invoice_no=inv_no,
+                    invoice_date=inv_date,
+                    total_amount=total,
+                    items=edited_df.to_dict(orient="records"),
+                )
+                st.success(f"Invoice **{inv_no}** saved (ID: {_inv_id})")
+            except Exception as _e:
+                st.error(f"Failed to save: {_e}")
+
+    # Step 5g: Recent saved invoices
+    with st.expander("Recent Saved Invoices", expanded=False):
+        try:
+            _recent = get_recent_invoices()
+            if _recent:
+                st.dataframe(pd.DataFrame(_recent), use_container_width=True)
+            else:
+                st.caption("No invoices saved yet.")
+        except Exception as _e:
+            st.error(f"Could not load invoices: {_e}")
+
+    st.divider()
+
+    # Step 5h: Analyze button
+    st.subheader("Step 5: Analyze with FFIA")
     _has_data = len(edited_df) > 0
-    if st.button("Analyze with FFIA", disabled=not _has_data, type="primary"):
+    if st.button("Analyze with FFIA", disabled=not _has_data):
         _prompt = (
             "Analyze this invoice for fuel-related cost impact and provide cost optimization "
             "recommendations for a restaurant.\n\n"
@@ -272,7 +309,7 @@ def _render_upload_page():
         with st.spinner("FFIA is analyzing..."):
             _result = run_agent(_prompt)
 
-        # Step 5g: FFIA Insight
+        # Step 5i: FFIA Insight
         st.subheader("FFIA Insight")
         st.markdown(_result.get("output", "No response from agent."))
 
@@ -286,7 +323,7 @@ def _render_upload_page():
                     st.divider()
 
 
-# Step 6: Dashboard page renderer — all existing chat + metrics logic
+# Step 7: Dashboard page renderer — all existing chat + metrics logic
 def _render_dashboard_page():
     """Render the main Dashboard page: header, metrics, chat agent."""
     # Step 6a: Header
@@ -376,7 +413,7 @@ def _render_dashboard_page():
         st.session_state.messages.append({"role": "assistant", "content": reply})
 
 
-# Step 7: Page router — dispatch to correct page based on session state
+# Step 8: Page router — dispatch to correct page based on session state
 if st.session_state.get("page", "dashboard") == "upload":
     _render_upload_page()
 else:
