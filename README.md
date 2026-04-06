@@ -154,6 +154,7 @@ python agent/main.py
 | Tool | What it was used for |
 |---|---|
 | Claude Code (Anthropic) | Repo scaffolding, agent implementation, UI design, code review |
+| Codex (OpenAI) | Project review, debugging, reliability fixes, and optimization |
 | Gemini 2.5 Flash (Google) | LLM powering the ReAct agent reasoning loop |
 | LangChain / LangGraph | Agent framework, tool orchestration |
 | Streamlit | Chat UI and reasoning trace dashboard |

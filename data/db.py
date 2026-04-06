@@ -77,7 +77,19 @@ def create_tables():
         conn.commit()
 
 
-# Step 5: Save invoice — insert or update if invoice_no already exists
+# Step 5: Duplicate check — used by the UI before saving
+def invoice_exists(invoice_no: str) -> bool:
+    """Return True if an invoice with this invoice_no already exists."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM invoices WHERE invoice_no = %s LIMIT 1",
+                (invoice_no,),
+            )
+            return cur.fetchone() is not None
+
+
+# Step 6: Save invoice — insert a new invoice and its items
 def save_invoice(
     vendor: str,
     invoice_no: str,
@@ -87,8 +99,6 @@ def save_invoice(
 ) -> int:
     """
     Persist an invoice header and its line items to PostgreSQL.
-
-    If invoice_no already exists, updates the header and replaces all items.
 
     Args:
         vendor:       Supplier name
@@ -102,26 +112,18 @@ def save_invoice(
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Step 5a: Upsert invoice header
+            # Step 6a: Insert invoice header
             cur.execute(
                 """
                 INSERT INTO invoices (vendor, invoice_no, invoice_date, total_amount)
                 VALUES (%s, %s, %s, %s)
-                ON CONFLICT (invoice_no)
-                DO UPDATE SET
-                    vendor       = EXCLUDED.vendor,
-                    invoice_date = EXCLUDED.invoice_date,
-                    total_amount = EXCLUDED.total_amount
                 RETURNING id
                 """,
                 (vendor, invoice_no, invoice_date, total_amount),
             )
             invoice_id = cur.fetchone()[0]
 
-            # Step 5b: Replace all existing line items for this invoice
-            cur.execute("DELETE FROM invoice_items WHERE invoice_id = %s", (invoice_id,))
-
-            # Step 5c: Bulk insert new line items
+            # Step 6b: Bulk insert line items
             if items:
                 psycopg2.extras.execute_batch(
                     cur,
@@ -145,7 +147,43 @@ def save_invoice(
     return invoice_id
 
 
-# Step 6: Fetch recent invoices for display in the UI
+# Step 7: Fetch the latest invoice with its line items for agent context
+def get_latest_invoice() -> dict | None:
+    """
+    Return the most recently created invoice and its line items.
+
+    Returns:
+        dict with invoice header fields plus `items`, or None if no invoice exists.
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, vendor, invoice_no, invoice_date, total_amount, created_at
+                FROM invoices
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+            invoice = cur.fetchone()
+            if not invoice:
+                return None
+
+            invoice_data = dict(invoice)
+            cur.execute(
+                """
+                SELECT name, qty, unit_price, total
+                FROM invoice_items
+                WHERE invoice_id = %s
+                ORDER BY id ASC
+                """,
+                (invoice_data["id"],),
+            )
+            invoice_data["items"] = [dict(row) for row in cur.fetchall()]
+            return invoice_data
+
+
+# Step 8: Fetch recent invoices for display in the UI
 def get_recent_invoices(limit: int = 10) -> list[dict]:
     """
     Return the most recently created invoices.
@@ -168,25 +206,31 @@ def get_recent_invoices(limit: int = 10) -> list[dict]:
             return [dict(row) for row in cur.fetchall()]
 
 
-# Step 7: Standalone test block
+# Step 9: Standalone test block
 if __name__ == "__main__":
     print("Creating tables...")
     create_tables()
     print("Tables ready.")
 
     print("Saving test invoice...")
-    inv_id = save_invoice(
-        vendor="Bangchak",
-        invoice_no="TEST-001",
-        invoice_date="2026-04-06",
-        total_amount=2450.00,
-        items=[
-            {"name": "Diesel 50L", "qty": 50, "unit_price": 29.94, "total": 1497.00},
-            {"name": "Gasohol 91 20L", "qty": 20, "unit_price": 31.28, "total": 625.60},
-        ],
-    )
-    print(f"Saved — invoice id: {inv_id}")
+    if invoice_exists("TEST-001"):
+        print("Invoice TEST-001 already exists.")
+    else:
+        inv_id = save_invoice(
+            vendor="Bangchak",
+            invoice_no="TEST-001",
+            invoice_date="2026-04-06",
+            total_amount=2450.00,
+            items=[
+                {"name": "Diesel 50L", "qty": 50, "unit_price": 29.94, "total": 1497.00},
+                {"name": "Gasohol 91 20L", "qty": 20, "unit_price": 31.28, "total": 625.60},
+            ],
+        )
+        print(f"Saved — invoice id: {inv_id}")
 
     print("Recent invoices:")
     for row in get_recent_invoices():
         print(" ", row)
+
+    print("Latest invoice:")
+    print(get_latest_invoice())

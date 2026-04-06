@@ -11,7 +11,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Step 2: Standard library imports + project root on path
+import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -27,6 +29,7 @@ from langgraph.prebuilt import create_react_agent
 # Step 4: Import tools built in agent/tools/
 from agent.tools.postgres_tool import postgres_tool
 from agent.tools.search_tool import search_tool
+from data.db import get_latest_invoice
 
 
 # Step 5: Load system prompt from file (kept in file, not hardcoded)
@@ -97,7 +100,28 @@ def _extract_text(content) -> str:
 MAX_CHAT_HISTORY_MESSAGES = 12
 
 
-def _build_agent_messages(user_message: str, chat_history: list | None = None) -> list:
+def _should_inject_latest_invoice(user_message: str) -> bool:
+    """Return True when the user is asking about an invoice."""
+    return bool(re.search(r"\binvoices?\b", user_message, flags=re.IGNORECASE))
+
+
+def _build_invoice_context_message(invoice: dict) -> str:
+    """Format the latest saved invoice as structured context for the agent."""
+    return (
+        "Latest saved invoice from PostgreSQL. Use this data when answering the user's "
+        "invoice question, and treat it as the primary invoice source unless the user "
+        "asks about a different invoice.\n\n"
+        f"{json.dumps(invoice, ensure_ascii=False, indent=2, default=str)}"
+    )
+
+
+def _build_agent_messages(
+    user_message: str,
+    chat_history: list | None = None,
+    latest_invoice: dict | None = None,
+    invoice_context_requested: bool = False,
+    invoice_context_error: str = "",
+) -> list:
     """Convert UI chat history into LangChain message objects without duplicating the current turn."""
     history = list(chat_history or [])
 
@@ -123,6 +147,24 @@ def _build_agent_messages(user_message: str, chat_history: list | None = None) -
             messages.append(AIMessage(content=content))
         elif role == "system":
             messages.append(SystemMessage(content=content))
+
+    if latest_invoice:
+        messages.append(SystemMessage(content=_build_invoice_context_message(latest_invoice)))
+    elif invoice_context_error:
+        messages.append(SystemMessage(
+            content=(
+                "The user asked about an invoice, but the latest invoice could not be loaded "
+                f"from PostgreSQL: {invoice_context_error}. Do not claim to have invoice data "
+                "unless it is provided elsewhere in the conversation."
+            )
+        ))
+    elif invoice_context_requested:
+        messages.append(SystemMessage(
+            content=(
+                "The user asked about an invoice, but no saved invoice was found in PostgreSQL. "
+                "Do not claim to have invoice data unless it is provided elsewhere in the conversation."
+            )
+        ))
 
     messages.append(HumanMessage(content=user_message))
     return messages
@@ -178,8 +220,23 @@ def run_agent(user_message: str, chat_history: list = None, callbacks: list = No
           "output"             — final answer as a clean plain string
           "intermediate_steps" — list of (tool_name: str, observation: str) tuples
     """
+    latest_invoice = None
+    invoice_context_error = ""
+    invoice_context_requested = _should_inject_latest_invoice(user_message)
+    if invoice_context_requested:
+        try:
+            latest_invoice = get_latest_invoice()
+        except Exception as exc:
+            invoice_context_error = str(exc)
+
     # Step 10a: Invoke the LangGraph agent
-    agent_messages = _build_agent_messages(user_message, chat_history)
+    agent_messages = _build_agent_messages(
+        user_message,
+        chat_history,
+        latest_invoice,
+        invoice_context_requested,
+        invoice_context_error,
+    )
     result = agent.invoke(
         {"messages": agent_messages},
         config={"callbacks": callbacks or []}

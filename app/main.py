@@ -17,7 +17,21 @@ import streamlit as st
 from agent.main import run_agent
 from app.utils.ocr import extract_invoice_data
 from app.utils.upload_cache import build_uploaded_file_cache_key
-from data.db import create_tables, save_invoice, get_recent_invoices
+from data.db import create_tables, invoice_exists, save_invoice, get_recent_invoices
+
+
+def _safe_invoice_date(value: object) -> date:
+    """Return a valid date for the form even if OCR left the field blank."""
+    try:
+        return date.fromisoformat(str(value).strip())
+    except (TypeError, ValueError):
+        return date.today()
+
+
+def _build_items_df(items: object) -> pd.DataFrame:
+    """Keep the line-item editor usable even when OCR returns no rows."""
+    return pd.DataFrame(items or [], columns=["name", "qty", "unit_price", "total"])
+
 
 # Step 3: Ensure PostgreSQL tables exist — idempotent, safe on every cold start
 try:
@@ -228,6 +242,26 @@ def _render_upload_page():
         with st.spinner("Extracting data from image..."):
             st.session_state[_cache_key] = extract_invoice_data(uploaded)
     data = st.session_state[_cache_key]
+    _ocr_error = data.get("_ocr_error", "")
+    _raw_ocr = data.get("_ocr_raw_response", "")
+    _cleaned_ocr = data.get("_ocr_cleaned_response", "")
+
+    if _ocr_error:
+        st.warning(
+            "OCR output could not be parsed cleanly. You can still review and edit the "
+            "invoice below, and the raw OCR response is shown for debugging."
+        )
+
+    with st.expander("OCR Debug Output", expanded=bool(_ocr_error)):
+        if _ocr_error:
+            st.caption(_ocr_error)
+        st.text_area("Raw OCR response", value=_raw_ocr, height=180, disabled=True)
+        st.text_area(
+            "Cleaned response before JSON parse",
+            value=_cleaned_ocr,
+            height=180,
+            disabled=True,
+        )
 
     # Step 5d: Header fields — two columns
     _col_a, _col_b = st.columns(2)
@@ -237,7 +271,7 @@ def _render_upload_page():
     with _col_b:
         inv_date = st.date_input(
             "Invoice Date",
-            value=date.fromisoformat(data["invoice_date"]),
+            value=_safe_invoice_date(data.get("invoice_date")),
         )
         total = st.number_input(
             "Total Amount (฿)",
@@ -248,7 +282,7 @@ def _render_upload_page():
 
     # Step 5e: Line items — editable table
     st.markdown("**Line Items**")
-    items_df = pd.DataFrame(data["items"])
+    items_df = _build_items_df(data.get("items"))
     edited_df = st.data_editor(
         items_df,
         num_rows="dynamic",
@@ -269,14 +303,18 @@ def _render_upload_page():
     with _col_save:
         if st.button("Save Invoice to Database", type="primary", use_container_width=True):
             try:
-                _inv_id = save_invoice(
-                    vendor=vendor,
-                    invoice_no=inv_no,
-                    invoice_date=inv_date,
-                    total_amount=total,
-                    items=edited_df.to_dict(orient="records"),
-                )
-                st.success(f"Invoice **{inv_no}** saved (ID: {_inv_id})")
+                _invoice_no = str(inv_no).strip()
+                if invoice_exists(_invoice_no):
+                    st.warning("⚠️ This invoice already exists")
+                else:
+                    _inv_id = save_invoice(
+                        vendor=vendor,
+                        invoice_no=_invoice_no,
+                        invoice_date=inv_date,
+                        total_amount=total,
+                        items=edited_df.to_dict(orient="records"),
+                    )
+                    st.success(f"Invoice **{_invoice_no}** saved (ID: {_inv_id})")
             except Exception as _e:
                 st.error(f"Failed to save: {_e}")
 

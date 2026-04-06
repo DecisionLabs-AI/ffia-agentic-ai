@@ -34,35 +34,44 @@ _llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=os.getenv("GOOGLE_API_KEY"),
     temperature=0.0,        # Deterministic extraction
-    max_output_tokens=1024,
+    max_output_tokens=2048,
 )
 
 # Step 4: Extraction prompt — tells Gemini exactly what schema to return
 _EXTRACTION_PROMPT = """
 You are an invoice data extraction assistant. Extract ALL data from this invoice image
-and return it as a single valid JSON object with EXACTLY these keys:
+and return it as a single valid JSON object with EXACTLY this schema:
 
 {
-  "vendor": "string — supplier or company name",
-  "invoice_no": "string — invoice or receipt number",
-  "invoice_date": "string — date in YYYY-MM-DD format",
-  "total_amount": number — total amount as a float (no currency symbols),
+  "vendor": string,
+  "invoice_no": string,
+  "invoice_date": string,
+  "total_amount": number,
   "items": [
     {
-      "name": "string — item or product name",
-      "qty": number — quantity as float,
-      "unit_price": number — unit price as float,
-      "total": number — line total as float
+      "name": string,
+      "qty": number,
+      "unit_price": number,
+      "total": number
     }
   ]
 }
 
 Rules:
-- Return ONLY the JSON object. No markdown fences, no explanation text.
+- Return JSON ONLY.
+- Do not use markdown.
+- Do not use code fences.
+- Do not add explanations or extra text before or after the JSON.
+- Return ONLY valid JSON that can be parsed directly with json.loads().
+- The output MUST be complete and closed JSON.
+- DO NOT truncate output.
+- Ensure the JSON is complete and ends with the final closing }.
+- Return valid JSON even if extraction is partial.
+- If you are unsure about any field, still return valid JSON and use empty fields.
 - All number values must be plain numbers (e.g. 29.94 not "29.94" or "฿29.94").
-- If a field is not visible on the invoice, use sensible defaults:
-  vendor → "Unknown", invoice_no → "N/A", invoice_date → today,
-  total_amount → 0.0, items → [].
+- If a field is not visible on the invoice, use these defaults exactly:
+  vendor → "", invoice_no → "", invoice_date → "",
+  total_amount → 0, items → [].
 - Strip all currency symbols and thousand-separator commas from numbers.
 - For dates: convert any format (DD/MM/YYYY, MM-DD-YYYY, etc.) to YYYY-MM-DD.
 """
@@ -92,10 +101,10 @@ def _safe_date(val) -> str:
     """
     Normalize date to ISO string (YYYY-MM-DD).
     Accepts: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, MM/DD/YYYY.
-    Falls back to today if unparseable.
+    Returns an empty string if missing or unparseable.
     """
     if not val:
-        return date.today().isoformat()
+        return ""
     s = str(val).strip()
     # Already ISO
     if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
@@ -112,8 +121,8 @@ def _safe_date(val) -> str:
         if len(y) == 2:
             y = "20" + y
         return f"{y}-{mo.zfill(2)}-{d.zfill(2)}"
-    _log.warning("Could not parse date '%s', using today", s)
-    return date.today().isoformat()
+    _log.warning("Could not parse date '%s', leaving blank", s)
+    return ""
 
 
 def _normalize(raw: dict) -> dict:
@@ -123,8 +132,8 @@ def _normalize(raw: dict) -> dict:
     """
     # Step N1: Normalize header fields
     normalized = {
-        "vendor":       _safe_str(raw.get("vendor"),       "Unknown"),
-        "invoice_no":   _safe_str(raw.get("invoice_no"),   "N/A"),
+        "vendor":       _safe_str(raw.get("vendor"),       ""),
+        "invoice_no":   _safe_str(raw.get("invoice_no"),   ""),
         "invoice_date": _safe_date(raw.get("invoice_date")),
         "total_amount": _safe_float(raw.get("total_amount"), 0.0),
         "items":        [],
@@ -133,13 +142,51 @@ def _normalize(raw: dict) -> dict:
     # Step N2: Normalize each line item
     for item in raw.get("items") or []:
         normalized["items"].append({
-            "name":       _safe_str(item.get("name"),       "—"),
+            "name":       _safe_str(item.get("name"),       ""),
             "qty":        _safe_float(item.get("qty"),       1.0),
             "unit_price": _safe_float(item.get("unit_price"), 0.0),
             "total":      _safe_float(item.get("total"),      0.0),
         })
 
     return normalized
+
+
+def _empty_invoice_data(
+    raw_response: str = "",
+    cleaned_response: str = "",
+    error: str = "",
+) -> dict:
+    """Return a safe fallback payload the UI can still render and edit."""
+    return {
+        "vendor": "",
+        "invoice_no": "",
+        "invoice_date": "",
+        "total_amount": 0.0,
+        "items": [],
+        "_ocr_raw_response": raw_response,
+        "_ocr_cleaned_response": cleaned_response,
+        "_ocr_error": error,
+    }
+
+
+def _coerce_response_text(content: object) -> str:
+    """Flatten Gemini response content into a plain text string."""
+    if isinstance(content, list):
+        return " ".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ).strip()
+    return str(content or "").strip()
+
+
+def _strip_json_wrappers(text: str) -> str:
+    """Remove common model wrappers like ```json fences or a leading json tag."""
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    cleaned = re.sub(r"^json\s*", "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned
 
 
 def extract_invoice_data(uploaded_file: object) -> dict:
@@ -180,30 +227,36 @@ def extract_invoice_data(uploaded_file: object) -> dict:
     # Step 5d: Call Gemini Vision
     try:
         response = _llm.invoke([message])
-        raw_text = response.content
-        if isinstance(raw_text, list):
-            raw_text = " ".join(
-                block.get("text", "") for block in raw_text
-                if isinstance(block, dict) and block.get("type") == "text"
-            )
-        raw_text = raw_text.strip()
+        raw_text = _coerce_response_text(response.content)
     except Exception as e:
         _log.error("Gemini Vision call failed: %s", e)
-        raise
+        return _empty_invoice_data(error=f"Gemini Vision call failed: {e}")
 
     # Step 5e: Log raw OCR text for debugging
     _log.debug("=== RAW OCR RESPONSE ===\n%s\n========================", raw_text)
 
     # Step 5f: Strip markdown fences if Gemini wrapped the JSON
-    cleaned = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    cleaned = _strip_json_wrappers(raw_text)
+    _log.debug("=== CLEANED OCR RESPONSE ===\n%s\n===========================", cleaned)
 
     # Step 5g: Parse JSON
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError as e:
         _log.error("JSON parse failed: %s\nRaw text was:\n%s", e, cleaned)
-        raise ValueError(f"OCR response was not valid JSON: {e}\n\nRaw response:\n{raw_text}")
+        return _empty_invoice_data(
+            raw_response=raw_text,
+            cleaned_response=cleaned,
+            error=f"OCR response was not valid JSON: {e}",
+        )
+
+    if not isinstance(parsed, dict):
+        _log.error("JSON parse produced non-object payload: %r", parsed)
+        return _empty_invoice_data(
+            raw_response=raw_text,
+            cleaned_response=cleaned,
+            error="OCR response JSON root was not an object.",
+        )
 
     # Step 5h: Log parsed JSON before normalization
     _log.debug("=== PARSED JSON ===\n%s\n===================",
@@ -211,6 +264,9 @@ def extract_invoice_data(uploaded_file: object) -> dict:
 
     # Step 5i: Normalize — enforce types, strip artifacts, fix dates
     result = _normalize(parsed)
+    result["_ocr_raw_response"] = raw_text
+    result["_ocr_cleaned_response"] = cleaned
+    result["_ocr_error"] = ""
 
     # Step 5j: Log final normalized output (what the UI will render)
     _log.debug("=== NORMALIZED OUTPUT ===\n%s\n=========================",
