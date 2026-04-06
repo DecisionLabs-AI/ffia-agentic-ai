@@ -172,6 +172,7 @@ section[data-testid="stSidebar"] .stMarkdown {
 section[data-testid="stSidebar"] .stButton > button {
     display: flex !important;
     align-items: center !important;
+    justify-content: flex-start !important;
     width: 100% !important;
     padding: 9px 12px !important;
     border-radius: 8px !important;
@@ -184,7 +185,12 @@ section[data-testid="stSidebar"] .stButton > button {
     cursor: pointer !important;
     box-shadow: none !important;
     margin-bottom: 2px !important;
-    justify-content: flex-start !important;
+    text-align: left !important;
+}
+/* Streamlit wraps button text in a <p> — force it left-aligned too */
+section[data-testid="stSidebar"] .stButton > button p {
+    text-align: left !important;
+    margin: 0 !important;
 }
 section[data-testid="stSidebar"] .stButton > button:hover {
     background: #1e293b !important;
@@ -258,10 +264,10 @@ with st.sidebar:
     _dash_key  = "nav_dashboard_active"  if _page == "dashboard" else "nav_dashboard_inactive"
     _upload_key = "nav_upload_active"    if _page == "upload"    else "nav_upload_inactive"
 
-    if st.button("  Dashboard",  key=_dash_key,  use_container_width=True):
+    if st.button("Dashboard",  key=_dash_key,  use_container_width=True):
         st.session_state["page"] = "dashboard"
         st.rerun()
-    if st.button("  Data Upload", key=_upload_key, use_container_width=True):
+    if st.button("Data Upload", key=_upload_key, use_container_width=True):
         st.session_state["page"] = "upload"
         st.rerun()
     if st.button("Logout", key="nav_logout", use_container_width=True):
