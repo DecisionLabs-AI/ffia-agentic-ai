@@ -1,6 +1,6 @@
 # FFIA — Project Context & Agent Architecture
 
-> Status: **W2 Complete** — LangGraph ReAct agent with Gemini 2.5 Flash (Google AI API), PostgreSQL, and Web Search live. Dark sidebar UI shipped.
+> Status: **W3 Complete** — LangGraph ReAct agent, OCR invoice upload (Claude Vision), PostgreSQL invoice CRUD, user authentication, and Business Profile Settings page live. Dark sidebar UI shipped.
 
 ---
 
@@ -75,32 +75,30 @@ This design makes the system easier to test (tools are pure functions), easier t
 User (Streamlit Chat UI — dark sidebar)
         │
         ▼
-┌─────────────────────────────────────────┐
-│           app/main.py                   │
-│  Streamlit Chat + st.expander trace     │
-│  Dark navy sidebar (SVG nav icons)      │
-└──────────────┬──────────────────────────┘
-               │ run_agent(message, history)
-               ▼
-┌─────────────────────────────────────────┐
-│           agent/main.py                 │
-│  LangGraph ReAct Agent                  │
-│  Model: Gemini 2.5 Flash (Google AI)    │
-│  Thought → Action → Observation loop    │
-└──────────┬──────────────────┬───────────┘
-           │                  │
-           ▼                  ▼
-┌──────────────────┐  ┌──────────────────┐
-│  postgres_tool   │  │   search_tool    │
-│  (SELECT only)   │  │  (DuckDuckGo)    │
-│  50-row cap      │  │  no API key      │
-└────────┬─────────┘  └────────┬─────────┘
-         │                     │
-         ▼                     ▼
-    PostgreSQL             DuckDuckGo
-  (Cloud: Supabase/        (free, no key)
-   Neon/etc. via
-   DATABASE_URL)
+┌──────────────────────────────────────────────────────────────┐
+│                        app/main.py                           │
+│  Pages: Dashboard │ Data Upload │ Business Profile Settings  │
+│  Auth: FFIA_AUTH_USERS_JSON (PBKDF2 password verification)   │
+│  OCR: app/utils/ocr.py — Claude Vision invoice extraction    │
+└────────────┬──────────────────────────┬──────────────────────┘
+             │ run_agent()              │ data/db.py
+             ▼                          ▼
+┌────────────────────────┐  ┌──────────────────────────────────┐
+│      agent/main.py     │  │           data/db.py             │
+│  LangGraph ReAct Agent │  │  psycopg2 CRUD helpers           │
+│  Gemini 2.5 Flash      │  │  invoices, invoice_items,        │
+│  Thought→Action→Obs    │  │  restaurant_profiles tables      │
+└────────┬───────┬───────┘  └──────────────┬───────────────────┘
+         │       │                          │
+         ▼       ▼                          ▼
+┌──────────────┐ ┌──────────────┐    PostgreSQL (Supabase)
+│postgres_tool │ │ search_tool  │    Row-Level Security (RLS)
+│ SELECT only  │ │ DuckDuckGo   │    per user_id tenant
+│ 50-row cap   │ │ no API key   │
+└──────┬───────┘ └──────────────┘
+       │
+       ▼
+  PostgreSQL (Supabase)
 ```
 
 ---
@@ -117,25 +115,40 @@ User (Streamlit Chat UI — dark sidebar)
 ### 2. Tools
 | Tool | File | Description |
 |---|---|---|
-| `postgres_tool` | `agent/tools/postgres_tool.py` | Executes SELECT queries against PostgreSQL (restaurant_costs, oil_prices) |
+| `postgres_tool` | `agent/tools/postgres_tool.py` | Executes SELECT queries against PostgreSQL; RLS enforced via `app.current_user_id` session config |
 | `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo — no API key required |
 
 **Security guardrails on PostgreSQL tool:**
 - Only `SELECT` statements accepted — mutations rejected at tool level
 - Results capped at 50 rows to control LLM context size
+- Row-Level Security (RLS) enforced at the database layer — each query is tenant-scoped to the authenticated `user_id`
 
 ### 3. Prompts
 - **System prompt**: `agent/prompts/system_prompt.txt` — defines FFIA role, available tools, Bangkok/THB context, output format
 - **Tool descriptions**: docstrings on each `@tool` function — LangGraph reads these to decide when to call each tool
 
 ### 4. Data Layer
-- **PostgreSQL**: Cloud-hosted (Supabase/Neon/etc.) — primary data source
-- Connection via `DATABASE_URL` in `.env`
+- **PostgreSQL**: Cloud-hosted (Supabase) — primary data source
+- Connection via `DATABASE_URL` in `.env`; helpers in `data/db.py` (psycopg2, no ORM)
+- **Row-Level Security**: `_apply_user_context(conn, user_id)` sets `app.current_user_id` PostgreSQL session variable; RLS policies enforce per-tenant isolation on all tables
+- **Tables managed by `data/db.py`**:
+  - `invoices` — invoice header records per user
+  - `invoice_items` — line items linked to each invoice
+  - `restaurant_profiles` — restaurant context and margin thresholds per user
 
-### 5. User Interface
+### 5. Authentication
+- **Source**: `FFIA_AUTH_USERS_JSON` env var — JSON array of users with pre-hashed passwords
+- **Verification**: PBKDF2-SHA256 (390,000 iterations) via `app/utils/auth.py`
+- **Session**: `st.session_state["auth_user"]` — contains `user_id`, `username`, `display_name`
+- `user_id` doubles as the PostgreSQL tenant identifier for RLS
+
+### 6. User Interface
 - **Framework**: Streamlit (`app/main.py`)
-- **Sidebar**: Dark navy (`#0f172a`) with SVG nav icons, active/inactive states, bottom-pinned account block
-- **Nav items**: Dashboard (active), Data Upload (inactive — OCR upload entry point, W3+)
+- **Sidebar**: Dark navy (`#0f172a`) with SVG nav icons, active/inactive CSS key states, bottom-pinned account block
+- **Nav items**:
+  - **Dashboard** — chat agent with reasoning trace
+  - **Data Upload** — OCR invoice ingestion (Claude Vision) → editable form → PostgreSQL save
+  - **Business Profile Settings** — view/edit `restaurant_profiles` (food types, store type, margin thresholds)
 - **Reasoning Transparency**: `st.expander("Agent Reasoning Trace (click to expand)")` — collapsed by default; shows tool name + observation per step
 - **Disclaimer**: CSS `::after` on `[data-testid="stBottom"]` — renders directly below the pinned chat input
 
@@ -146,10 +159,13 @@ User (Streamlit Chat UI — dark sidebar)
 | File | Purpose |
 |---|---|
 | `agent/main.py` | LangGraph agent setup, `run_agent()` public function, `_extract_text()` Gemini content normalizer |
-| `agent/tools/postgres_tool.py` | PostgreSQL SQL execution tool (`@tool` decorator, exposes `postgres_tool`) |
+| `agent/tools/postgres_tool.py` | PostgreSQL SELECT tool for agent — RLS-enforced, 50-row cap |
 | `agent/tools/search_tool.py` | DuckDuckGo web search tool |
-| `agent/prompts/system_prompt.txt` | Agent role, tool guidance, output format |
-| `app/main.py` | Streamlit chat UI — dark sidebar, metric cards, chat loop, reasoning trace |
+| `agent/prompts/system_prompt.txt` | Agent role, tool guidance, Bangkok/THB context, output format |
+| `app/main.py` | Streamlit UI — Dashboard, Data Upload, and Business Profile Settings pages |
+| `app/utils/auth.py` | User authentication — PBKDF2 password verification, session helpers |
+| `app/utils/ocr.py` | Claude Vision OCR — extracts invoice fields and line items from uploaded images |
+| `data/db.py` | PostgreSQL helpers — invoice CRUD, restaurant profile upsert/fetch, RLS context setup |
 | `app/assets/ffia_logo_design.png` | Sidebar logo (base64-embedded in HTML) |
 | `requirements.txt` | Python dependencies |
 | `.env` | Secrets — never committed (see `.env.example`) |
@@ -162,6 +178,8 @@ User (Streamlit Chat UI — dark sidebar)
 |---|---|---|
 | `GOOGLE_API_KEY` | Yes | Gemini API key (get from aistudio.google.com) |
 | `DATABASE_URL` | Yes | PostgreSQL connection URL (`postgresql://user:pass@host:5432/db`) |
+| `FFIA_AUTH_USERS_JSON` | Yes | JSON array of users with `username`, `display_name`, `password_hash` |
+| `ANTHROPIC_API_KEY` | Yes | Claude API key — used by `app/utils/ocr.py` for invoice OCR |
 | `TAVILY_API_KEY` | No | Upgrades web search from DuckDuckGo to Tavily automatically |
 
 ---
@@ -195,14 +213,20 @@ Returns:
 
 ---
 
-## Planned W3+ Enhancements
-- [ ] `calculate_margin` tool — compute true margin per menu item using PostgreSQL data
+## Completed Milestones
+
+| Week | Deliverable |
+|---|---|
+| W1 | LangGraph ReAct agent, Gemini 2.5 Flash, DuckDuckGo search tool, dark sidebar UI |
+| W2 | PostgreSQL integration, invoice CRUD (`data/db.py`), RLS tenant isolation, user authentication |
+| W3 | OCR invoice upload (Claude Vision), Data Upload page, Business Profile Settings page, `restaurant_profiles` upsert |
+
+## Planned W4+ Enhancements
+- [ ] `calculate_margin` tool — compute true margin per menu item using invoice and profile data
 - [ ] `simulate_scenario` tool — what-if oil price sensitivity analysis
-- [ ] Data Upload page — OCR invoice ingestion (Claude Vision) into PostgreSQL
 - [ ] Multi-agent: Planner → Data Agent + Margin Agent + Recommendation Agent
 - [ ] RAG: Menu cost history as vector store for trend queries
-- [ ] Memory: Remember restaurant profile across conversation sessions
 
 ---
 
-*Last updated: W2 — LangGraph ReAct agent, Gemini 2.5 Flash (Google AI API), PostgreSQL + WebSearch tools, dark sidebar UI.*
+*Last updated: W3 — OCR upload, PostgreSQL CRUD, user auth, Business Profile Settings page.*
