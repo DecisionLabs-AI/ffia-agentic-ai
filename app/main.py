@@ -16,7 +16,16 @@ import pandas as pd
 import streamlit as st
 from app.utils.auth import authenticate_user, load_auth_users
 from app.utils.upload_cache import build_uploaded_file_cache_key
-from data.db import create_tables, invoice_exists, save_invoice, get_recent_invoices
+from data.db import (
+    create_tables,
+    invoice_exists,
+    save_invoice,
+    get_recent_invoices,
+    fetch_invoices_current_month,
+    fetch_invoice_items,
+    fetch_latest_restaurant_profile,
+    upsert_restaurant_profile,
+)
 
 
 def _safe_invoice_date(value: object) -> date:
@@ -260,14 +269,18 @@ with st.sidebar:
     # Step 4c: Nav items — plain st.button, CSS-keyed active highlight via _active/_inactive suffix
     _page = st.session_state.get("page", "dashboard")
 
-    _dash_key   = "nav_dashboard_active"  if _page == "dashboard" else "nav_dashboard_inactive"
-    _upload_key = "nav_upload_active"     if _page == "upload"    else "nav_upload_inactive"
+    _dash_key    = "nav_dashboard_active"  if _page == "dashboard"        else "nav_dashboard_inactive"
+    _upload_key  = "nav_upload_active"     if _page == "upload"           else "nav_upload_inactive"
+    _profile_key = "nav_profile_active"    if _page == "profile_settings" else "nav_profile_inactive"
 
     if st.button("Dashboard",   key=_dash_key,   use_container_width=True):
         st.session_state["page"] = "dashboard"
         st.rerun()
     if st.button("Data Upload", key=_upload_key, use_container_width=True):
         st.session_state["page"] = "upload"
+        st.rerun()
+    if st.button("Business Profile", key=_profile_key, use_container_width=True):
+        st.session_state["page"] = "profile_settings"
         st.rerun()
     if st.button("Logout", key="nav_logout", use_container_width=True):
         _clear_user_session()
@@ -289,7 +302,54 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-# Step 6: Data Upload page renderer — OCR → editable form → FFIA analysis
+# Step 6: Monthly invoices section — always visible below the upload flow
+def _render_monthly_invoices_section(current_user: dict) -> None:
+    """Render the current-month invoice list and item detail view."""
+    st.subheader("Uploaded Invoices (Current Month)")
+
+    # Step 6a: Fetch this month's invoices for the authenticated user
+    try:
+        invoices = fetch_invoices_current_month(current_user["user_id"])
+    except Exception as _e:
+        st.error(f"Could not load invoices: {_e}")
+        return
+
+    if not invoices:
+        st.info("No invoices uploaded this month.")
+        return
+
+    # Step 6b: Display invoice table (date, vendor, invoice_no, total_amount)
+    _inv_df = pd.DataFrame(invoices)[["invoice_date", "vendor", "invoice_no", "total_amount"]]
+    st.dataframe(_inv_df, use_container_width=True, hide_index=True)
+
+    # Step 6c: Invoice selectbox — label combines invoice_no, vendor, date for clarity
+    _options = {
+        f"{r['invoice_no']} — {r['vendor']} ({r['invoice_date']})": r["id"]
+        for r in invoices
+    }
+    _selected_label = st.selectbox("Select an invoice to view items", list(_options.keys()))
+    _selected_id = _options[_selected_label]
+
+    # Step 6d: Fetch and display line items for the selected invoice
+    try:
+        _items = fetch_invoice_items(_selected_id, current_user["user_id"])
+    except Exception as _e:
+        st.error(f"Could not load items: {_e}")
+        return
+
+    if not _items:
+        st.caption("No line items found for this invoice.")
+        return
+
+    st.markdown(f"**Line Items — {_selected_label}**")
+    st.dataframe(
+        pd.DataFrame(_items)[["item_name", "qty", "unit_price", "total"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+# Step 7: Data Upload page renderer — OCR → editable form → FFIA analysis
 def _render_upload_page(current_user: dict):
     """Render the Data Upload page: upload image → preview → extract → edit → analyze."""
     st.title("Data Upload — Invoice Image OCR")
@@ -310,139 +370,257 @@ def _render_upload_page(current_user: dict):
 
     if not uploaded:
         st.info("Upload an invoice image above to begin.")
+    else:
+        # Step 5b: Preview
+        st.subheader("Step 2: Preview")
+        st.image(uploaded, width=480)
+
+        # Step 5c: Extract — run once per file, cache in session state
+        st.subheader("Step 3: Review & Edit Extracted Data")
+        st.caption("Please review and adjust extracted data before analysis.")
+
+        _cache_key = build_uploaded_file_cache_key(uploaded)
+        if _cache_key not in st.session_state:
+            with st.spinner("Extracting data from image..."):
+                st.session_state[_cache_key] = _get_extract_invoice_data()(uploaded)
+        data = st.session_state[_cache_key]
+        _ocr_error = data.get("_ocr_error", "")
+        _raw_ocr = data.get("_ocr_raw_response", "")
+        _cleaned_ocr = data.get("_ocr_cleaned_response", "")
+
+        if _ocr_error:
+            st.warning(
+                "OCR output could not be parsed cleanly. You can still review and edit the "
+                "invoice below, and the raw OCR response is shown for debugging."
+            )
+
+        with st.expander("OCR Debug Output", expanded=bool(_ocr_error)):
+            if _ocr_error:
+                st.caption(_ocr_error)
+            st.text_area("Raw OCR response", value=_raw_ocr, height=180, disabled=True)
+            st.text_area(
+                "Cleaned response before JSON parse",
+                value=_cleaned_ocr,
+                height=180,
+                disabled=True,
+            )
+
+        # Step 5d: Header fields — two columns
+        _col_a, _col_b = st.columns(2)
+        with _col_a:
+            vendor  = st.text_input("Vendor",     value=data["vendor"])
+            inv_no  = st.text_input("Invoice No", value=data["invoice_no"])
+        with _col_b:
+            inv_date = st.date_input(
+                "Invoice Date",
+                value=_safe_invoice_date(data.get("invoice_date")),
+            )
+            total = st.number_input(
+                "Total Amount (฿)",
+                value=float(data["total_amount"]),
+                step=0.01,
+                format="%.2f",
+            )
+
+        # Step 5e: Line items — editable table
+        st.markdown("**Line Items**")
+        items_df = _build_items_df(data.get("items"))
+        edited_df = st.data_editor(
+            items_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            column_config={
+                "name":       st.column_config.TextColumn("Item Name"),
+                "qty":        st.column_config.NumberColumn("Qty", step=1),
+                "unit_price": st.column_config.NumberColumn("Unit Price (฿)", format="%.2f"),
+                "total":      st.column_config.NumberColumn("Total (฿)", format="%.2f"),
+            },
+        )
+
+        st.divider()
+
+        # Step 5f: Save to database button
+        st.subheader("Step 4: Save Invoice")
+        _col_save, _ = st.columns([1, 3])
+        with _col_save:
+            if st.button("Save Invoice to Database", type="primary", use_container_width=True):
+                try:
+                    _invoice_no = str(inv_no).strip()
+                    if invoice_exists(current_user["user_id"], _invoice_no):
+                        st.warning("⚠️ This invoice already exists")
+                    else:
+                        _inv_id = save_invoice(
+                            user_id=current_user["user_id"],
+                            vendor=vendor,
+                            invoice_no=_invoice_no,
+                            invoice_date=inv_date,
+                            total_amount=total,
+                            items=edited_df.to_dict(orient="records"),
+                        )
+                        st.success(f"Invoice **{_invoice_no}** saved (ID: {_inv_id})")
+                except Exception as _e:
+                    st.error(f"Failed to save: {_e}")
+
+        # Step 5g: Recent saved invoices
+        with st.expander("Recent Saved Invoices", expanded=False):
+            try:
+                _recent = get_recent_invoices(current_user["user_id"])
+                if _recent:
+                    st.dataframe(pd.DataFrame(_recent), use_container_width=True)
+                else:
+                    st.caption("No invoices saved yet.")
+            except Exception as _e:
+                st.error(f"Could not load invoices: {_e}")
+
+        st.divider()
+
+        # Step 5h: Analyze button
+        st.subheader("Step 5: Analyze with FFIA")
+        _has_data = len(edited_df) > 0
+        if st.button("Analyze with FFIA", disabled=not _has_data):
+            _prompt = (
+                "Analyze this invoice for fuel-related cost impact and provide cost optimization "
+                "recommendations for a restaurant.\n\n"
+                f"Vendor: {vendor}\n"
+                f"Invoice No: {inv_no}\n"
+                f"Date: {inv_date}\n"
+                f"Total: ฿{total:,.2f}\n\n"
+                f"Line items:\n{edited_df.to_string(index=False)}"
+            )
+            with st.spinner("FFIA is analyzing..."):
+                _result = _get_run_agent()(_prompt, current_user_id=current_user["user_id"])
+
+            # Step 5i: FFIA Insight
+            st.subheader("FFIA Insight")
+            st.markdown(_result.get("output", "No response from agent."))
+
+            _steps = _result.get("intermediate_steps", [])
+            if _steps:
+                with st.expander("Agent Reasoning Trace (click to expand)", expanded=False):
+                    for _i, (_tool_name, _obs) in enumerate(_steps, 1):
+                        st.markdown(f"**Step {_i} — Action:** `{_tool_name}`")
+                        if _obs:
+                            st.markdown(f"**Observation:** {str(_obs)[:500]}")
+                        st.divider()
+
+    # Step 5j: Monthly invoice list — always visible, below the upload flow
+    st.divider()
+    _render_monthly_invoices_section(current_user)
+
+
+# Step 7b: Business Profile Settings page renderer
+def _render_profile_settings_page(current_user: dict) -> None:
+    """Render the Business Profile Settings form."""
+    # Step 1: Page header
+    st.title("Business Profile Settings")
+    st.caption("Update your restaurant profile used for margin analysis and recommendations.")
+    st.divider()
+
+    # Step 2: Fetch existing profile from DB
+    try:
+        _profile = fetch_latest_restaurant_profile(current_user["user_id"])
+    except Exception:
+        st.error("Unable to load your profile. Please refresh the page or contact support.")
         return
 
-    # Step 5b: Preview
-    st.subheader("Step 2: Preview")
-    st.image(uploaded, width=480)
+    # Step 3: Pre-populate defaults from existing profile, or use sensible defaults
+    _name_default     = (_profile.get("restaurant_name") or "")          if _profile else ""
+    _btype_default    = (_profile.get("business_type") or "")            if _profile else ""
+    _food_default     = list(_profile.get("food_types") or [])           if _profile else []
+    _store_default    = (_profile.get("store_type") or "ghost_kitchen")  if _profile else "ghost_kitchen"
+    _seat_default     = (_profile.get("seat_range") or "0")              if _profile else "0"
+    _currency_default = (_profile.get("currency") or "THB")              if _profile else "THB"
+    _target_default   = float(_profile.get("target_margin_pct") or 30.0) if _profile else 30.0
+    _warning_default  = float(_profile.get("warning_margin_pct") or 25.0) if _profile else 25.0
+    _risk_default     = float(_profile.get("risk_margin_pct") or 20.0)   if _profile else 20.0
 
-    # Step 5c: Extract — run once per file, cache in session state
-    st.subheader("Step 3: Review & Edit Extracted Data")
-    st.caption("Please review and adjust extracted data before analysis.")
+    # Step 4: Render editable form
+    _FOOD_OPTIONS = [
+        "street_food", "noodle", "grilled", "beverage", "dessert", "somtum",
+        "seafood", "healthy", "vegan", "meal_prep", "steak", "sushi",
+        "a_la_carte", "high_lpg", "packaging_sensitive", "high_cogs_import",
+    ]
+    # business_type = what the restaurant IS; store_type = how it operates (no overlap)
+    _BTYPE_OPTIONS = ["restaurant", "cafe", "food_stall", "catering", "franchise_branch", "other"]
+    _STORE_OPTIONS = ["ghost_kitchen", "hybrid_small", "full_restaurant"]
+    _SEAT_OPTIONS  = ["0", "1_10", "11_30", "31_plus"]
 
-    _cache_key = build_uploaded_file_cache_key(uploaded)
-    if _cache_key not in st.session_state:
-        with st.spinner("Extracting data from image..."):
-            st.session_state[_cache_key] = _get_extract_invoice_data()(uploaded)
-    data = st.session_state[_cache_key]
-    _ocr_error = data.get("_ocr_error", "")
-    _raw_ocr = data.get("_ocr_raw_response", "")
-    _cleaned_ocr = data.get("_ocr_cleaned_response", "")
+    with st.form("profile_settings_form"):
+        # Step 4a: Restaurant name
+        _restaurant_name = st.text_input("Restaurant Name", value=_name_default)
 
-    if _ocr_error:
-        st.warning(
-            "OCR output could not be parsed cleanly. You can still review and edit the "
-            "invoice below, and the raw OCR response is shown for debugging."
-        )
+        # Step 4b: Business type | Store type
+        _col1, _col2 = st.columns(2)
+        with _col1:
+            _btype_idx = _BTYPE_OPTIONS.index(_btype_default) if _btype_default in _BTYPE_OPTIONS else len(_BTYPE_OPTIONS) - 1
+            _business_type = st.selectbox("Business Type", options=_BTYPE_OPTIONS, index=_btype_idx)
+        with _col2:
+            _store_idx = _STORE_OPTIONS.index(_store_default) if _store_default in _STORE_OPTIONS else 0
+            _store_type = st.selectbox("Store Type", options=_STORE_OPTIONS, index=_store_idx)
 
-    with st.expander("OCR Debug Output", expanded=bool(_ocr_error)):
-        if _ocr_error:
-            st.caption(_ocr_error)
-        st.text_area("Raw OCR response", value=_raw_ocr, height=180, disabled=True)
-        st.text_area(
-            "Cleaned response before JSON parse",
-            value=_cleaned_ocr,
-            height=180,
-            disabled=True,
-        )
+        # Step 4c: Food types multiselect (allows multiple selection)
+        _food_types = st.multiselect("Food Types", options=_FOOD_OPTIONS, default=_food_default)
 
-    # Step 5d: Header fields — two columns
-    _col_a, _col_b = st.columns(2)
-    with _col_a:
-        vendor  = st.text_input("Vendor",     value=data["vendor"])
-        inv_no  = st.text_input("Invoice No", value=data["invoice_no"])
-    with _col_b:
-        inv_date = st.date_input(
-            "Invoice Date",
-            value=_safe_invoice_date(data.get("invoice_date")),
-        )
-        total = st.number_input(
-            "Total Amount (฿)",
-            value=float(data["total_amount"]),
-            step=0.01,
-            format="%.2f",
-        )
+        # Step 4d: Seat range | Currency
+        _col3, _col4 = st.columns(2)
+        with _col3:
+            _seat_idx = _SEAT_OPTIONS.index(_seat_default) if _seat_default in _SEAT_OPTIONS else 0
+            _seat_range = st.selectbox("Seat Range", options=_SEAT_OPTIONS, index=_seat_idx)
+        with _col4:
+            _currency = st.text_input("Currency", value=_currency_default, disabled=True)
 
-    # Step 5e: Line items — editable table
-    st.markdown("**Line Items**")
-    items_df = _build_items_df(data.get("items"))
-    edited_df = st.data_editor(
-        items_df,
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "name":       st.column_config.TextColumn("Item Name"),
-            "qty":        st.column_config.NumberColumn("Qty", step=1),
-            "unit_price": st.column_config.NumberColumn("Unit Price (฿)", format="%.2f"),
-            "total":      st.column_config.NumberColumn("Total (฿)", format="%.2f"),
-        },
-    )
+        # Step 4e: Margin thresholds — target >= warning >= risk
+        _col5, _col6, _col7 = st.columns(3)
+        with _col5:
+            _target_margin = st.number_input(
+                "Target Margin (%)", min_value=0.0, max_value=100.0,
+                value=_target_default, step=0.5, format="%.1f",
+            )
+        with _col6:
+            _warning_margin = st.number_input(
+                "Warning Margin (%)", min_value=0.0, max_value=100.0,
+                value=_warning_default, step=0.5, format="%.1f",
+            )
+        with _col7:
+            _risk_margin = st.number_input(
+                "Risk Margin (%)", min_value=0.0, max_value=100.0,
+                value=_risk_default, step=0.5, format="%.1f",
+            )
 
-    st.divider()
+        # Step 4f: Submit button
+        _submitted = st.form_submit_button("Save Profile", type="primary", use_container_width=False)
 
-    # Step 5f: Save to database button
-    st.subheader("Step 4: Save Invoice")
-    _col_save, _ = st.columns([1, 3])
-    with _col_save:
-        if st.button("Save Invoice to Database", type="primary", use_container_width=True):
+    # Step 5: Validate and save on submission
+    if _submitted:
+        # Step 5a: Require non-empty restaurant name
+        if not _restaurant_name.strip():
+            st.error("Restaurant name cannot be empty.")
+        # Step 5b: Validate margin hierarchy: target >= warning >= risk
+        elif _target_margin < _warning_margin or _warning_margin < _risk_margin:
+            st.error(
+                f"Margin thresholds must satisfy: Target \u2265 Warning \u2265 Risk. "
+                f"Got: Target={_target_margin}%, Warning={_warning_margin}%, Risk={_risk_margin}%."
+            )
+        else:
+            # Step 5c: Persist to DB
             try:
-                _invoice_no = str(inv_no).strip()
-                if invoice_exists(current_user["user_id"], _invoice_no):
-                    st.warning("⚠️ This invoice already exists")
-                else:
-                    _inv_id = save_invoice(
-                        user_id=current_user["user_id"],
-                        vendor=vendor,
-                        invoice_no=_invoice_no,
-                        invoice_date=inv_date,
-                        total_amount=total,
-                        items=edited_df.to_dict(orient="records"),
-                    )
-                    st.success(f"Invoice **{_invoice_no}** saved (ID: {_inv_id})")
-            except Exception as _e:
-                st.error(f"Failed to save: {_e}")
-
-    # Step 5g: Recent saved invoices
-    with st.expander("Recent Saved Invoices", expanded=False):
-        try:
-            _recent = get_recent_invoices(current_user["user_id"])
-            if _recent:
-                st.dataframe(pd.DataFrame(_recent), use_container_width=True)
-            else:
-                st.caption("No invoices saved yet.")
-        except Exception as _e:
-            st.error(f"Could not load invoices: {_e}")
-
-    st.divider()
-
-    # Step 5h: Analyze button
-    st.subheader("Step 5: Analyze with FFIA")
-    _has_data = len(edited_df) > 0
-    if st.button("Analyze with FFIA", disabled=not _has_data):
-        _prompt = (
-            "Analyze this invoice for fuel-related cost impact and provide cost optimization "
-            "recommendations for a restaurant.\n\n"
-            f"Vendor: {vendor}\n"
-            f"Invoice No: {inv_no}\n"
-            f"Date: {inv_date}\n"
-            f"Total: ฿{total:,.2f}\n\n"
-            f"Line items:\n{edited_df.to_string(index=False)}"
-        )
-        with st.spinner("FFIA is analyzing..."):
-            _result = _get_run_agent()(_prompt, current_user_id=current_user["user_id"])
-
-        # Step 5i: FFIA Insight
-        st.subheader("FFIA Insight")
-        st.markdown(_result.get("output", "No response from agent."))
-
-        _steps = _result.get("intermediate_steps", [])
-        if _steps:
-            with st.expander("Agent Reasoning Trace (click to expand)", expanded=False):
-                for _i, (_tool_name, _obs) in enumerate(_steps, 1):
-                    st.markdown(f"**Step {_i} — Action:** `{_tool_name}`")
-                    if _obs:
-                        st.markdown(f"**Observation:** {str(_obs)[:500]}")
-                    st.divider()
+                upsert_restaurant_profile(
+                    user_id=current_user["user_id"],
+                    restaurant_name=_restaurant_name.strip(),
+                    business_type=_business_type,
+                    food_types=_food_types,
+                    store_type=_store_type,
+                    seat_range=_seat_range,
+                    currency=_currency,
+                    target_margin_pct=_target_margin,
+                    warning_margin_pct=_warning_margin,
+                    risk_margin_pct=_risk_margin,
+                )
+                # Step 5d: Success feedback
+                st.success("Business profile saved successfully.")
+            except Exception:
+                # Step 5e: DB failure — friendly message, raw exception not exposed
+                st.error("Your profile could not be saved. Please try again or contact support.")
 
 
 # Step 7: Dashboard page renderer — all existing chat + metrics logic
@@ -536,7 +714,10 @@ def _render_dashboard_page(current_user: dict):
 
 
 # Step 8: Page router — dispatch to correct page based on session state
-if st.session_state.get("page", "dashboard") == "upload":
+_active_page = st.session_state.get("page", "dashboard")
+if _active_page == "upload":
     _render_upload_page(_current_user)
+elif _active_page == "profile_settings":
+    _render_profile_settings_page(_current_user)
 else:
     _render_dashboard_page(_current_user)

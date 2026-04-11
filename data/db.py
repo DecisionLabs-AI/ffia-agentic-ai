@@ -9,22 +9,43 @@ import os
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
+from app.utils.auth import get_legacy_owner_user_id
 
 load_dotenv()
 
-# Step 2: Read DATABASE_URL from environment (never hardcoded)
-_DATABASE_URL = os.getenv("DATABASE_URL")
+# Step 2: Runtime config getter — reads DATABASE_URL on demand, not at import time.
+# This ensures .env changes are picked up without restarting Streamlit.
+def _get_database_url() -> str | None:
+    return os.getenv("DATABASE_URL")
 
 
 # Step 3: Connection helper
-def get_connection():
+def _require_user_id(user_id: str) -> str:
+    """Return a validated tenant identifier."""
+    normalized = str(user_id or "").strip()
+    if not normalized:
+        raise ValueError("Authenticated user_id is required for invoice access.")
+    return normalized
+
+
+def _apply_user_context(conn, user_id: str) -> None:
+    """Bind the current PostgreSQL session to a tenant for RLS enforcement."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT set_config('app.current_user_id', %s, false)", (user_id,))
+
+
+def get_connection(user_id: str | None = None):
     """Return a psycopg2 connection using DATABASE_URL from .env."""
-    if not _DATABASE_URL:
+    database_url = _get_database_url()
+    if not database_url:
         raise RuntimeError(
             "DATABASE_URL is not set. Add it to your .env file.\n"
             "Format: postgresql://user:password@host:5432/dbname"
         )
-    return psycopg2.connect(_DATABASE_URL)
+    conn = psycopg2.connect(database_url)
+    if user_id:
+        _apply_user_context(conn, _require_user_id(user_id))
+    return conn
 
 
 # Step 4: Schema creation — idempotent, safe to call on every app startup
@@ -36,8 +57,9 @@ def create_tables():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS invoices (
                     id           SERIAL PRIMARY KEY,
+                    user_id      TEXT,
                     vendor       TEXT NOT NULL,
-                    invoice_no   TEXT UNIQUE NOT NULL,
+                    invoice_no   TEXT NOT NULL,
                     invoice_date DATE NOT NULL,
                     total_amount NUMERIC(12, 2) NOT NULL,
                     created_at   TIMESTAMP DEFAULT NOW()
@@ -49,6 +71,7 @@ def create_tables():
                 CREATE TABLE IF NOT EXISTS invoice_items (
                     id          SERIAL PRIMARY KEY,
                     invoice_id  INTEGER REFERENCES invoices(id) ON DELETE CASCADE,
+                    user_id     TEXT,
                     name        TEXT NOT NULL,
                     qty         NUMERIC(10, 3) NOT NULL,
                     unit_price  NUMERIC(12, 2) NOT NULL,
@@ -56,14 +79,72 @@ def create_tables():
                 )
             """)
 
-            # Step 4c: Ensure unique index on invoice_no (idempotent — handles tables
-            # created before the UNIQUE constraint was added to the schema)
+            # Step 4c: Temporarily disable RLS while running schema maintenance
+            cur.execute("ALTER TABLE invoices NO FORCE ROW LEVEL SECURITY")
+            cur.execute("ALTER TABLE invoices DISABLE ROW LEVEL SECURITY")
+            cur.execute("ALTER TABLE invoice_items NO FORCE ROW LEVEL SECURITY")
+            cur.execute("ALTER TABLE invoice_items DISABLE ROW LEVEL SECURITY")
+
+            # Step 4d: Ensure tenant columns exist on older table versions
+            cur.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS user_id TEXT")
+            cur.execute("ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS user_id TEXT")
+
+            # Step 4e: Replace global invoice uniqueness with per-user uniqueness
+            cur.execute("ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_invoice_no_key")
+            cur.execute("DROP INDEX IF EXISTS idx_invoices_invoice_no")
+
+            # Step 4f: Backfill legacy rows before making user_id required
+            legacy_owner_user_id = get_legacy_owner_user_id()
+            cur.execute("SELECT COUNT(*) FROM invoices WHERE user_id IS NULL")
+            _null_invoice_count = cur.fetchone()[0]
+            if _null_invoice_count:
+                if not legacy_owner_user_id:
+                    raise RuntimeError(
+                        "Existing invoices must be assigned to a tenant before enabling multi-tenant security. "
+                        "Set FFIA_LEGACY_OWNER_USERNAME or configure exactly one auth user."
+                    )
+                cur.execute(
+                    "UPDATE invoices SET user_id = %s WHERE user_id IS NULL",
+                    (legacy_owner_user_id,),
+                )
+
             cur.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_invoice_no
-                ON invoices(invoice_no)
+                UPDATE invoice_items AS items
+                SET user_id = invoices.user_id
+                FROM invoices
+                WHERE items.invoice_id = invoices.id
+                  AND items.user_id IS NULL
+            """)
+            cur.execute("SELECT COUNT(*) FROM invoice_items WHERE user_id IS NULL")
+            _null_item_count = cur.fetchone()[0]
+            if _null_item_count:
+                if not legacy_owner_user_id:
+                    raise RuntimeError(
+                        "Existing invoice_items rows must be assigned to a tenant before enabling multi-tenant security."
+                    )
+                cur.execute(
+                    "UPDATE invoice_items SET user_id = %s WHERE user_id IS NULL",
+                    (legacy_owner_user_id,),
+                )
+
+            cur.execute("ALTER TABLE invoices ALTER COLUMN user_id SET NOT NULL")
+            cur.execute("ALTER TABLE invoice_items ALTER COLUMN user_id SET NOT NULL")
+
+            # Step 4g: Ensure tenant-aware indexes exist
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_user_invoice_no
+                ON invoices(user_id, invoice_no)
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_invoices_user_created_at
+                ON invoices(user_id, created_at DESC)
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_invoice_items_user_invoice_id
+                ON invoice_items(user_id, invoice_id)
             """)
 
-            # Step 4d: Backfill any columns that may be missing from older table versions
+            # Step 4h: Backfill any columns that may be missing from older table versions
             for _col, _def in [
                 ("name",       "TEXT NOT NULL DEFAULT ''"),
                 ("qty",        "NUMERIC(10, 3) NOT NULL DEFAULT 0"),
@@ -74,23 +155,56 @@ def create_tables():
                     ALTER TABLE invoice_items
                     ADD COLUMN IF NOT EXISTS {_col} {_def}
                 """)
+
+            # Step 4i: Enforce row-level tenant isolation for invoice tables
+            cur.execute("ALTER TABLE invoices ENABLE ROW LEVEL SECURITY")
+            cur.execute("ALTER TABLE invoices FORCE ROW LEVEL SECURITY")
+            cur.execute("DROP POLICY IF EXISTS invoices_tenant_isolation ON invoices")
+            cur.execute("""
+                CREATE POLICY invoices_tenant_isolation ON invoices
+                USING (
+                    current_setting('app.current_user_id', true) IS NOT NULL
+                    AND user_id = current_setting('app.current_user_id', true)
+                )
+                WITH CHECK (
+                    current_setting('app.current_user_id', true) IS NOT NULL
+                    AND user_id = current_setting('app.current_user_id', true)
+                )
+            """)
+
+            cur.execute("ALTER TABLE invoice_items ENABLE ROW LEVEL SECURITY")
+            cur.execute("ALTER TABLE invoice_items FORCE ROW LEVEL SECURITY")
+            cur.execute("DROP POLICY IF EXISTS invoice_items_tenant_isolation ON invoice_items")
+            cur.execute("""
+                CREATE POLICY invoice_items_tenant_isolation ON invoice_items
+                USING (
+                    current_setting('app.current_user_id', true) IS NOT NULL
+                    AND user_id = current_setting('app.current_user_id', true)
+                )
+                WITH CHECK (
+                    current_setting('app.current_user_id', true) IS NOT NULL
+                    AND user_id = current_setting('app.current_user_id', true)
+                )
+            """)
         conn.commit()
 
 
 # Step 5: Duplicate check — used by the UI before saving
-def invoice_exists(invoice_no: str) -> bool:
-    """Return True if an invoice with this invoice_no already exists."""
-    with get_connection() as conn:
+def invoice_exists(user_id: str, invoice_no: str) -> bool:
+    """Return True if an invoice with this invoice_no already exists for the current user."""
+    normalized_user_id = _require_user_id(user_id)
+    with get_connection(normalized_user_id) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT 1 FROM invoices WHERE invoice_no = %s LIMIT 1",
-                (invoice_no,),
+                "SELECT 1 FROM invoices WHERE user_id = %s AND invoice_no = %s LIMIT 1",
+                (normalized_user_id, invoice_no),
             )
             return cur.fetchone() is not None
 
 
 # Step 6: Save invoice — insert a new invoice and its items
 def save_invoice(
+    user_id: str,
     vendor: str,
     invoice_no: str,
     invoice_date,
@@ -101,6 +215,7 @@ def save_invoice(
     Persist an invoice header and its line items to PostgreSQL.
 
     Args:
+        user_id:      Authenticated tenant identifier
         vendor:       Supplier name
         invoice_no:   Unique invoice reference number
         invoice_date: Date object or ISO string (YYYY-MM-DD)
@@ -110,16 +225,17 @@ def save_invoice(
     Returns:
         int: The invoice id (primary key)
     """
-    with get_connection() as conn:
+    normalized_user_id = _require_user_id(user_id)
+    with get_connection(normalized_user_id) as conn:
         with conn.cursor() as cur:
             # Step 6a: Insert invoice header
             cur.execute(
                 """
-                INSERT INTO invoices (vendor, invoice_no, invoice_date, total_amount)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO invoices (user_id, vendor, invoice_no, invoice_date, total_amount)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (vendor, invoice_no, invoice_date, total_amount),
+                (normalized_user_id, vendor, invoice_no, invoice_date, total_amount),
             )
             invoice_id = cur.fetchone()[0]
 
@@ -128,12 +244,13 @@ def save_invoice(
                 psycopg2.extras.execute_batch(
                     cur,
                     """
-                    INSERT INTO invoice_items (invoice_id, name, qty, unit_price, total)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO invoice_items (invoice_id, user_id, name, qty, unit_price, total)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
                             invoice_id,
+                            normalized_user_id,
                             row.get("name", ""),
                             float(row.get("qty", 0)),
                             float(row.get("unit_price", 0)),
@@ -148,22 +265,25 @@ def save_invoice(
 
 
 # Step 7: Fetch the latest invoice with its line items for agent context
-def get_latest_invoice() -> dict | None:
+def get_latest_invoice(user_id: str) -> dict | None:
     """
-    Return the most recently created invoice and its line items.
+    Return the most recently created invoice for the current user and its line items.
 
     Returns:
         dict with invoice header fields plus `items`, or None if no invoice exists.
     """
-    with get_connection() as conn:
+    normalized_user_id = _require_user_id(user_id)
+    with get_connection(normalized_user_id) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, vendor, invoice_no, invoice_date, total_amount, created_at
+                SELECT id, user_id, vendor, invoice_no, invoice_date, total_amount, created_at
                 FROM invoices
+                WHERE user_id = %s
                 ORDER BY created_at DESC
                 LIMIT 1
-                """
+                """,
+                (normalized_user_id,),
             )
             invoice = cur.fetchone()
             if not invoice:
@@ -174,49 +294,203 @@ def get_latest_invoice() -> dict | None:
                 """
                 SELECT name, qty, unit_price, total
                 FROM invoice_items
-                WHERE invoice_id = %s
+                WHERE user_id = %s AND invoice_id = %s
                 ORDER BY id ASC
                 """,
-                (invoice_data["id"],),
+                (normalized_user_id, invoice_data["id"]),
             )
             invoice_data["items"] = [dict(row) for row in cur.fetchall()]
             return invoice_data
 
 
 # Step 8: Fetch recent invoices for display in the UI
-def get_recent_invoices(limit: int = 10) -> list[dict]:
+def get_recent_invoices(user_id: str, limit: int = 10) -> list[dict]:
     """
-    Return the most recently created invoices.
+    Return the most recently created invoices for the current user.
 
     Returns:
         List of dicts with keys: id, vendor, invoice_no, invoice_date,
         total_amount, created_at
     """
-    with get_connection() as conn:
+    normalized_user_id = _require_user_id(user_id)
+    with get_connection(normalized_user_id) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, vendor, invoice_no, invoice_date, total_amount, created_at
+                SELECT id, user_id, vendor, invoice_no, invoice_date, total_amount, created_at
                 FROM invoices
+                WHERE user_id = %s
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
-                (limit,),
+                (normalized_user_id, limit),
             )
             return [dict(row) for row in cur.fetchall()]
 
 
-# Step 9: Standalone test block
+# Step 9: Fetch invoices for the current calendar month — used by the upload page
+def fetch_invoices_current_month(user_id: str) -> list[dict]:
+    """
+    Return all invoices whose invoice_date falls in the current calendar month,
+    sorted by invoice_date DESC (latest first).
+
+    Returns:
+        List of dicts with keys: id, invoice_date, vendor, invoice_no, total_amount
+    """
+    normalized_user_id = _require_user_id(user_id)
+    with get_connection(normalized_user_id) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, invoice_date, vendor, invoice_no, total_amount
+                FROM invoices
+                WHERE user_id = %s
+                  AND DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
+                ORDER BY invoice_date DESC
+                """,
+                (normalized_user_id,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+# Step 10: Fetch line items for a selected invoice — used by the upload page detail view
+def fetch_invoice_items(invoice_id: int, user_id: str) -> list[dict]:
+    """
+    Return line items for a given invoice, aliasing the 'name' column as 'item_name'
+    to match the display requirement.
+
+    Returns:
+        List of dicts with keys: item_name, qty, unit_price, total
+    """
+    normalized_user_id = _require_user_id(user_id)
+    with get_connection(normalized_user_id) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT name AS item_name, qty, unit_price, total
+                FROM invoice_items
+                WHERE invoice_id = %s AND user_id = %s
+                ORDER BY id ASC
+                """,
+                (invoice_id, normalized_user_id),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+# Step 11: Restaurant profile helpers
+
+def fetch_latest_restaurant_profile(user_id: str) -> dict | None:
+    """Return the most recent active restaurant profile for the user, or None."""
+    # Step 11a: Normalize and validate user_id
+    _uid = _require_user_id(user_id)
+    # Step 11b: Query latest active profile ordered by updated_at DESC
+    with get_connection(_uid) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, user_id, restaurant_name, business_type, food_types,
+                       store_type, seat_range, currency,
+                       target_margin_pct, warning_margin_pct, risk_margin_pct,
+                       is_active, created_at, updated_at
+                FROM public.restaurant_profiles
+                WHERE user_id = %s AND is_active = true
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (_uid,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            # Step 11c: Normalize food_types — column may be text[] (list) or text (JSON string)
+            profile = dict(row)
+            raw_food = profile.get("food_types")
+            if isinstance(raw_food, str):
+                import json
+                try:
+                    profile["food_types"] = json.loads(raw_food)
+                except (ValueError, TypeError):
+                    profile["food_types"] = []
+            elif raw_food is None:
+                profile["food_types"] = []
+            return profile
+
+
+# Step 12: Upsert restaurant profile
+
+def upsert_restaurant_profile(
+    user_id: str,
+    restaurant_name: str,
+    business_type: str,
+    food_types: list[str],
+    store_type: str,
+    seat_range: str,
+    currency: str,
+    target_margin_pct: float,
+    warning_margin_pct: float,
+    risk_margin_pct: float,
+) -> None:
+    """Update the active profile if one exists; insert a new one if not."""
+    # Step 12a: Normalize user_id
+    _uid = _require_user_id(user_id)
+    # Step 12b: UPDATE existing active row; INSERT if no row was updated
+    with get_connection(_uid) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE public.restaurant_profiles
+                SET restaurant_name = %s,
+                    business_type   = %s,
+                    food_types      = %s::text[],
+                    store_type      = %s,
+                    seat_range      = %s,
+                    currency        = %s,
+                    target_margin_pct  = %s,
+                    warning_margin_pct = %s,
+                    risk_margin_pct    = %s,
+                    updated_at      = NOW()
+                WHERE user_id = %s AND is_active = true
+                """,
+                (
+                    restaurant_name, business_type, food_types,
+                    store_type, seat_range, currency,
+                    target_margin_pct, warning_margin_pct, risk_margin_pct,
+                    _uid,
+                ),
+            )
+            # Step 12c: INSERT if no existing active profile was found
+            if cur.rowcount == 0:
+                cur.execute(
+                    """
+                    INSERT INTO public.restaurant_profiles
+                        (user_id, restaurant_name, business_type, food_types,
+                         store_type, seat_range, currency,
+                         target_margin_pct, warning_margin_pct, risk_margin_pct,
+                         is_active)
+                    VALUES (%s, %s, %s, %s::text[], %s, %s, %s, %s, %s, %s, true)
+                    """,
+                    (
+                        _uid, restaurant_name, business_type, food_types,
+                        store_type, seat_range, currency,
+                        target_margin_pct, warning_margin_pct, risk_margin_pct,
+                    ),
+                )
+        conn.commit()
+
+
+# Step 13: Standalone test block
 if __name__ == "__main__":
     print("Creating tables...")
     create_tables()
     print("Tables ready.")
 
     print("Saving test invoice...")
-    if invoice_exists("TEST-001"):
+    _test_user_id = "demo"
+    if invoice_exists(_test_user_id, "TEST-001"):
         print("Invoice TEST-001 already exists.")
     else:
         inv_id = save_invoice(
+            user_id=_test_user_id,
             vendor="Bangchak",
             invoice_no="TEST-001",
             invoice_date="2026-04-06",
@@ -229,8 +503,8 @@ if __name__ == "__main__":
         print(f"Saved — invoice id: {inv_id}")
 
     print("Recent invoices:")
-    for row in get_recent_invoices():
+    for row in get_recent_invoices(_test_user_id):
         print(" ", row)
 
     print("Latest invoice:")
-    print(get_latest_invoice())
+    print(get_latest_invoice(_test_user_id))
