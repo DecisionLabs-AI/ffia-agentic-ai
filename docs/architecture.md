@@ -1,6 +1,71 @@
-# FFIA — Agent Architecture
+# FFIA — Project Context & Agent Architecture
 
 > Status: **W2 Complete** — LangGraph ReAct agent with Gemini 2.5 Flash (Google AI API), PostgreSQL, and Web Search live. Dark sidebar UI shipped.
+
+---
+
+## Business Context
+
+FFIA (Fuel & Food Impact Analyzer) is an AI-powered decision support tool for Bangkok restaurant owners. It connects real-time oil price movements to menu cost structures, helping operators understand how fuel and ingredient costs affect their margins — without needing a data analyst.
+
+**Target users:** Restaurant owners and operators in Bangkok who manage food costs manually and lack visibility into how commodity price swings affect menu profitability.
+
+**Problems it solves:**
+- **Cost increase analysis** — quantify the impact of oil/fuel price changes on ingredient and delivery costs
+- **Menu risk detection** — flag which menu items are most exposed to cost volatility
+- **Pricing recommendations** — suggest adjusted menu prices to protect target margins
+
+---
+
+## Data & Business Logic Source
+
+All business logic, data definitions, and scenario rules are maintained as living documents in the `docs/` folder:
+
+| Document | Purpose |
+|---|---|
+| `docs/data_definition.md` | Schema definitions, field meanings, data types, and acceptable value ranges |
+| `docs/business_rules.md` | Margin calculation formulas, cost allocation logic, and pricing thresholds |
+| `docs/scenarios.md` | Pre-defined what-if scenarios used by the simulation tool |
+| `docs/demo_script.md` | Guided demo flow — sample questions, expected agent responses, and presenter notes |
+
+→ These documents are the **single source of truth** for all system logic. When implementing tools or agent behavior, defer to these files — not assumptions or LLM defaults.
+
+---
+
+## AI Development & Prompt Rules
+
+Rules that apply when generating code, prompts, or agent logic for this project:
+
+- **Always apply the Style Guide Prompt** before generating or modifying any code — consistency matters across weeks
+- **Do not hallucinate libraries or functions** — only use packages present in `requirements.txt` or explicitly approved
+- **Validate all inputs** — check type, range, and empty/null before passing to tools or queries
+- **Explain before fixing** — when diagnosing an error, describe the root cause first, then apply the fix
+- **Use deterministic logic in tools** — tools must return consistent outputs for the same inputs; no randomness or LLM calls inside tools
+- **Security first** — all secrets via `.env` only; never hardcode credentials or connection strings
+- **Model pinning** — always use `gemini-2.5-flash` or newer; `gemini-1.5-flash` is deprecated and causes 404 errors
+
+---
+
+## Team Responsibility Model
+
+| Role | Responsibilities |
+|---|---|
+| **Business Team** | Define data schemas (`data_definition.md`), business rules (`business_rules.md`), simulation scenarios (`scenarios.md`), and demo flow (`demo_script.md`) |
+| **IT Lead (Kanpirom)** | Implement agent tools, wire LangGraph agent, integrate database and UI, and ensure system behavior matches business-defined rules |
+
+The business team owns the *what* — the IT Lead owns the *how*. Implementation decisions that affect business logic must be validated against `docs/business_rules.md` before merging.
+
+---
+
+## System Design Philosophy
+
+FFIA uses a **single-agent, multi-tool architecture**:
+
+- **Agent** (`agent/main.py`) — orchestrates reasoning via a LangGraph ReAct loop; decides which tools to call, interprets observations, and generates final recommendations in natural language
+- **Tools** (`agent/tools/`) — handle all deterministic logic (SQL queries, margin calculations, scenario simulation); tools never call the LLM and always return structured, predictable outputs
+- **Separation of concerns** — the agent reasons, tools compute; this keeps the LLM focused on language and intent while tools guarantee correctness for numeric and data operations
+
+This design makes the system easier to test (tools are pure functions), easier to debug (reasoning traces are captured per step), and easier to extend (new tools can be added without changing agent logic).
 
 ---
 
