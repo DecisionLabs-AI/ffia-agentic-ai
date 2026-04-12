@@ -186,6 +186,18 @@ def create_tables():
                     AND user_id = current_setting('app.current_user_id', true)
                 )
             """)
+
+            # Step 4j: Ingredient market prices — global reference table (no RLS, no tenant scoping)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ingredient_market_prices (
+                    id               TEXT PRIMARY KEY,
+                    ingredient       TEXT NOT NULL,
+                    avg_market_price NUMERIC(10, 2) NOT NULL,
+                    unit             TEXT NOT NULL,
+                    source           TEXT NOT NULL,
+                    seeded_at        TIMESTAMP DEFAULT NOW()
+                )
+            """)
         conn.commit()
 
 
@@ -375,6 +387,76 @@ def fetch_invoice_items(invoice_id: int, user_id: str) -> list[dict]:
                 (invoice_id, normalized_user_id),
             )
             return [dict(row) for row in cur.fetchall()]
+
+
+# Step 10b: Count all line items for a user — used by dashboard decision card
+def count_invoice_items(user_id: str) -> int:
+
+    """Return total count of invoice line items stored for this user."""
+    normalized_user_id = _require_user_id(user_id)
+    with get_connection(normalized_user_id) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM invoice_items WHERE user_id = %s",
+                (normalized_user_id,),
+            )
+            return cur.fetchone()[0]
+
+
+# Step 10c: Seed ingredient market prices from a CSV file — idempotent upsert
+def seed_ingredient_market_prices(csv_path: str) -> int:
+    """
+    Upsert rows from a CSV into ingredient_market_prices.
+    Safe to re-run: existing rows are updated, new rows are inserted.
+
+    Args:
+        csv_path: Path to CSV with columns: id, ingredient, avg_market_price, unit, source.
+
+    Returns:
+        Number of rows upserted.
+    """
+    import csv
+    from pathlib import Path
+
+    # Step 10c-i: Read CSV rows into a list of tuples
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Ingredient CSV not found: {csv_path}")
+
+    rows = []
+    with open(path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            rows.append((
+                row["id"].strip(),
+                row["ingredient"].strip(),
+                float(row["avg_market_price"]),
+                row["unit"].strip(),
+                row["source"].strip(),
+            ))
+
+    if not rows:
+        return 0
+
+    # Step 10c-ii: Upsert — insert new rows, update existing ones on id conflict
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_batch(
+                cur,
+                """
+                INSERT INTO ingredient_market_prices (id, ingredient, avg_market_price, unit, source)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                    SET ingredient       = EXCLUDED.ingredient,
+                        avg_market_price = EXCLUDED.avg_market_price,
+                        unit             = EXCLUDED.unit,
+                        source           = EXCLUDED.source,
+                        seeded_at        = NOW()
+                """,
+                rows,
+            )
+        conn.commit()
+    return len(rows)
 
 
 # Step 11: Restaurant profile helpers

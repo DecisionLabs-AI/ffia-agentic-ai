@@ -9,7 +9,7 @@
 | Requirement | Status | Evidence | Week Done |
 |---|---|---|---|
 | LLM Core (at least 1 LLM) | ✅ Complete | Gemini 2.5 Flash via `ChatGoogleGenerativeAI` + `GOOGLE_API_KEY` in `agent/main.py` | W2 |
-| Tool Use (2+ distinct tools, dynamic) | ✅ Complete | `postgres_tool` + `search_tool` in `agent/tools/` — both wired and live | W2 |
+| Tool Use (2+ distinct tools, dynamic) | ✅ Complete | `postgres_tool` + `search_tool` + `oil_price_tool` in `agent/tools/` — all wired and live | W3 |
 | Data Integration (real/realistic dataset) | ✅ Complete | Cloud PostgreSQL via `DATABASE_URL`; SELECT queries working | W2 |
 | User Interface (not just terminal) | ✅ Complete | Streamlit Chat UI with dark sidebar, metric cards, reasoning trace | W2 |
 | Reasoning Transparency (visible trace) | ✅ Complete | `st.expander("Agent Reasoning Trace")` shows tool calls + observations per turn | W2 |
@@ -45,7 +45,7 @@
 |---|---|---|---|
 | **W1** | Discover & Align | Repo created, folder structure, problem statement committed | ✅ Complete |
 | **W2** | Agent Skeleton | LangGraph ReAct agent + Gemini 2.5 Flash (Google AI API) + PostgreSQL + WebSearch + Streamlit UI with dark sidebar | ✅ Complete |
-| **W3** | Tools & Data Sprint | Live demo with 2+ tools + real dataset; `calculate_margin` + `simulate_scenario` tools | ⬜ Pending |
+| **W3** | Tools & Data Sprint | Live demo with 2+ tools + real dataset; `oil_price_tool` (GSheet) added | 🔄 In Progress |
 | **W4** | UI & Integration | Full agent via UI, all reasoning steps visible, multi-tool flows | ⬜ Pending |
 | **W5** | Harden & Document | README + architecture.md complete, code freeze, end-to-end tested | ⬜ Pending |
 | **W6** | Final Demo & Submit | Tag v1.0, repo URL submitted, team demo recorded | ⬜ Pending |

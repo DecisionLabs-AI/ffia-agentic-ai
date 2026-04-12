@@ -1,0 +1,229 @@
+id,ingredient,avg_market_price,unit,source
+MAK-272716,เอโร่ หนังยางวงใหญ่ (0.5 x 2 ถุง) 1 กก.,159,pack,Makro
+MAK-845708,เอโร่ กล่องอาหารประหยัด 600 มล. x 50,159,pack,Makro
+MAK-857142,เอโร่ แก้วพีพี 16 ออนซ์ 100 ชิ้น,89,pack,Makro
+MAK-857865,เอโร่ กล่องอาหารใส รุ่น OPS 5H x 100,145,pack,Makro
+MAK-859051,เอโร่ ถุงกระดาษน้ำตาลหูเกลียว ขนาด 32x11x24 ซม. แพ็ค 50 ใบ,329,pack,Makro
+MAK-865288,เอโร่ กล่องอาหารพลาสติก พีพี สีดำ 750 มล. x 25,109,pack,Makro
+MAK-893019,เอโร่ ชุดชามไมโครเวฟพร้อมฝา 350 มล. x 25,69,pack,Makro
+MAK-898148,เอโร่ กล่องอาหารฝาพับพีพี 450 มล. 50 ชิ้น,169,pack,Makro
+MAK-898648,เอโร่ ถุงร้อน 4x6 นิ้ว บรรจุ 1 กก.,85,pack,Makro
+MAK-898649,เอโร่ ถุงร้อน 4.5x7 นิ้ว 1 กก.,85,pack,Makro
+MAK-898651,เอโร่ ถุงร้อน 6x9 นิ้ว 1 กก.,85,pack,Makro
+MAK-898652,เอโร่ ถุงร้อน 7x11 นิ้ว 1 กก.,85,pack,Makro
+MAK-898653,"เอโร่ ถุงร้อน ขนาด 8""X12"" (บรรจุ 1 ก.ก.)",85,pack,Makro
+MAK-924822,เอโร่ ถุงซิปใส 15x23 ซม. 0.5 กก.,129,pack,Makro
+MAK-931887,เอโร่ กล่องไบโอชานอ้อย 2 ช่อง 1 ล. สีขาว 50 ชิ้น,219,pack,Makro
+MOC-001,ไก่มีชีวิต (ซี.พี.),42.5,kg,Ministry of Commerce
+MOC-002,ไก่มีชีวิต (ทั่วไป),42.5,kg,Ministry of Commerce
+MOC-003,ไก่สดชำแหละ แข้ง ขา ตีน,74,kg,Ministry of Commerce
+MOC-004,ไก่สดชำแหละ เครื่องใน,68.5,kg,Ministry of Commerce
+MOC-005,ไก่สดชำแหละ โครงกระดูก,23.5,kg,Ministry of Commerce
+MOC-006,ไก่สดชำแหละ น่อง สะโพก,80,kg,Ministry of Commerce
+MOC-007,ไก่สดชำแหละ น่อง,80,kg,Ministry of Commerce
+MOC-008,ไก่สดชำแหละ เนื้อสันใน,81,kg,Ministry of Commerce
+MOC-009,ไก่สดชำแหละ เนื้ออก (ติดหนัง),67,unknown,Ministry of Commerce
+MOC-010,ไก่สดชำแหละ เนื้ออก (เนื้อล้วน),75,kg,Ministry of Commerce
+MOC-011,ไก่สดชำแหละ ปีก ทั้งปีก (ปีกเต็ม),83.5,kg,Ministry of Commerce
+MOC-012,ไก่สดชำแหละ ปีกบน,79,kg,Ministry of Commerce
+MOC-013,ไก่สดชำแหละ สะโพก,86,kg,Ministry of Commerce
+MOC-014,ไก่สดชำแหละ หนัง,51,kg,Ministry of Commerce
+MOC-015,ไก่สดทั้งตัว (รวมเครื่องใน),66.5,kg,Ministry of Commerce
+MOC-016,ไข่ไก่ คละ ณ แหล่งผลิต,3.6,piece,Ministry of Commerce
+MOC-017,ไข่ไก่ เบอร์ 0,4.35,piece,Ministry of Commerce
+MOC-018,ไข่ไก่ เบอร์ 1,4.15,piece,Ministry of Commerce
+MOC-019,ไข่ไก่ เบอร์ 2,3.95,piece,Ministry of Commerce
+MOC-020,ไข่ไก่ เบอร์ 3,3.7,piece,Ministry of Commerce
+MOC-021,ไข่ไก่ เบอร์ 4,3.45,piece,Ministry of Commerce
+MOC-022,ไข่ไก่ เบอร์ 5,3.25,piece,Ministry of Commerce
+MOC-023,ไข่เป็ด กลาง,4.45,piece,Ministry of Commerce
+MOC-024,ไข่เป็ด คละ ณ แหล่งผลิต,4.2,piece,Ministry of Commerce
+MOC-025,ไข่เป็ด เล็ก,4.25,piece,Ministry of Commerce
+MOC-026,ไข่เป็ด ใหญ่,4.75,piece,Ministry of Commerce
+MOC-027,ไข่เป็ดเค็ม กลาง,5.45,piece,Ministry of Commerce
+MOC-028,ไข่เป็ดเค็ม ใหญ่,5.75,piece,Ministry of Commerce
+MOC-029,เนื้อโค ส่วนน่อง,195,kg,Ministry of Commerce
+MOC-030,เนื้อโค สะโพก,200,kg,Ministry of Commerce
+MOC-031,เนื้อโค สันนอก,210,kg,Ministry of Commerce
+MOC-032,เนื้อโค สันใน,230,kg,Ministry of Commerce
+MOC-033,เนื้อโค สามชั้น,185,kg,Ministry of Commerce
+MOC-034,เป็ดสด (ทั้งตัว) ขนาดไซส์ L,290,item,Ministry of Commerce
+MOC-035,เป็ดสด (ทั้งตัว) ขนาดไซส์ S,220,item,Ministry of Commerce
+MOC-036,เป็ดสด (ทั้งตัว) ขนาดไซส์ XL,320,item,Ministry of Commerce
+MOC-037,เป็ดสด (ทั้งสด) ขนาดไซส์ M-MM,255,item,Ministry of Commerce
+MOC-038,ลูกไก่ไข่,27.5,item,Ministry of Commerce
+MOC-039,ลูกไก่เนื้อ ซีพี,19.25,item,Ministry of Commerce
+MOC-040,ลูกไก่เนื้อ ทั่วไป,18,item,Ministry of Commerce
+MOC-041,ลูกสุกรซีพี (นน. 16 กก./ตัว),2000,item,Ministry of Commerce
+MOC-042,สุกรชำแหละ ทั่วไป,83.5,kg,Ministry of Commerce
+MOC-043,สุกรชำแหละ เนื้อแดง สะโพก,114,kg,Ministry of Commerce
+MOC-044,สุกรชำแหละ เนื้อแดง ไหล่,111,kg,Ministry of Commerce
+MOC-045,สุกรชำแหละ เนื้อสัน สันนอก,121,kg,Ministry of Commerce
+MOC-046,สุกรชำแหละ เนื้อสัน สันใน,127,kg,Ministry of Commerce
+MOC-047,สุกรชำแหละ เนื้อสามชั้น,151,kg,Ministry of Commerce
+MOC-048,สุกรชำแหละ ฟาร์ม,84.5,kg,Ministry of Commerce
+MOC-049,สุกรชำแหละ มันแข็ง,63.5,kg,Ministry of Commerce
+MOC-050,สุกรมีชีวิต ทั่วไป,66.5,kg,Ministry of Commerce
+MOC-051,สุกรมีชีวิต ฟาร์ม,67.5,kg,Ministry of Commerce
+MOC-052,กุ้งก้ามกรามบ่อเลี้ยงไทย (ขนาดกลาง) 15-16 ตัว/กก.,575,kg,Ministry of Commerce
+MOC-053,กุ้งขาว (40 ตัว/กก.),245,kg,Ministry of Commerce
+MOC-054,กุ้งขาว (50 ตัว/กก.),225,kg,Ministry of Commerce
+MOC-055,กุ้งขาว (60 ตัว/กก.),205,kg,Ministry of Commerce
+MOC-056,กุ้งขาว (70 ตัว/กก.),185,kg,Ministry of Commerce
+MOC-057,กุ้งขาว (80 ตัว/กก.),165,kg,Ministry of Commerce
+MOC-058,ปลากระพงขาว (0.7-2 กก./ตัว),185,kg,Ministry of Commerce
+MOC-059,ปลาช่อน,190,kg,Ministry of Commerce
+MOC-060,ปลาดุก (พันธุ์บิ๊กอุย),65,kg,Ministry of Commerce
+MOC-061,ปลาทับทิม,125,kg,Ministry of Commerce
+MOC-062,ปลาทู (2 - 3 ตัว/เข่ง),45,basket,Ministry of Commerce
+MOC-063,ปลาทูสด (9-12 ตัว/กก.),125,kg,Ministry of Commerce
+MOC-064,ปลานิล,72.5,kg,Ministry of Commerce
+MOC-065,ปลาสวาย,57.5,kg,Ministry of Commerce
+MOC-066,ปลาหมึกกระดอง คละ,290,kg,Ministry of Commerce
+MOC-067,ปลาหมึกกล้วย คละ,240,kg,Ministry of Commerce
+MOC-068,หอยแครง คละ,215,kg,Ministry of Commerce
+MOC-069,หอยแมลงภู่ คละ,62.5,kg,Ministry of Commerce
+MOC-070,หอยลาย คละ,90,kg,Ministry of Commerce
+MOC-071,กระชายขาว,37.5,kg,Ministry of Commerce
+MOC-072,กะหล่ำดอก,27.5,kg,Ministry of Commerce
+MOC-073,กะหล่ำปลี,13.5,kg,Ministry of Commerce
+MOC-074,ข้าวโพดฝักอ่อน,42.5,kg,Ministry of Commerce
+MOC-075,ขิงแก่ คละ,32.5,kg,Ministry of Commerce
+MOC-076,ขิงอ่อน,47.5,kg,Ministry of Commerce
+MOC-077,ขึ้นฉ่าย,85,kg,Ministry of Commerce
+MOC-078,ต้นหอม,45,kg,Ministry of Commerce
+MOC-079,แตงกวา,17.5,kg,Ministry of Commerce
+MOC-080,ถั่วฝักยาว,45,kg,Ministry of Commerce
+MOC-081,ผักกวางตุ้ง,11,kg,Ministry of Commerce
+MOC-082,ผักกะเฉด 1 กำ,22.5,bunch,Ministry of Commerce
+MOC-083,ผักกาดขาว (ลุ้ย),16.5,kg,Ministry of Commerce
+MOC-084,ผักกาดหอม,32.5,kg,Ministry of Commerce
+MOC-085,ผักคะน้า,17.5,kg,Ministry of Commerce
+MOC-086,ผักชี,65,kg,Ministry of Commerce
+MOC-087,ผักบุ้งจีน,17.5,kg,Ministry of Commerce
+MOC-088,ผักบุ้งไทย 10 กำ,85,10 bunch,Ministry of Commerce
+MOC-089,พริกขี้หนูจินดา (แดง),35,kg,Ministry of Commerce
+MOC-090,พริกขี้หนูสวน (เม็ดกลาง),95,kg,Ministry of Commerce
+MOC-091,พริกสดชี้ฟ้า (แดง),35,kg,Ministry of Commerce
+MOC-092,ฟักเขียว,9,kg,Ministry of Commerce
+MOC-093,มะเขือเจ้าพระยา,13.5,kg,Ministry of Commerce
+MOC-094,มะเขือเทศผลใหญ่,22.5,kg,Ministry of Commerce
+MOC-095,มะเขือเทศสีดา,27.5,kg,Ministry of Commerce
+MOC-096,น้ำมันปาล์มสำเร็จรูป บรรจุขวด 1 ลิตร (12 ขวด/หีบ) ราคาขายส่ง โรงงานกลั่นส่งมอบถึงยี่ปั๊ว บาท/หีบ,556.5,case,Ministry of Commerce
+MOC-097,งาขาว เมล็ดใหญ่,80,kg,Ministry of Commerce
+MOC-098,งาดำ,120,kg,Ministry of Commerce
+MOC-099,ถั่วลิสงกะเทาะเปลือก คัดธรรมดา,67.5,kg,Ministry of Commerce
+MOC-100,ถั่วลิสงกะเทาะเปลือก คัดพิเศษ,77.5,kg,Ministry of Commerce
+MOC-101,น้ำมันถั่วลิสงบริสุทธิ์ บรรจุขวด 1 ลิตร ตรากวางบิน,145,bottle,Ministry of Commerce
+MOC-102,น้ำมันถั่วเหลืองบริสุทธิ์ บรรจุปี๊บ 13.75 ลิตร (12.50 กก.) ตราองุ่น,755,tin,Ministry of Commerce
+MOC-103,น้ำมันถั่วเหลืองบริสุทธิ์บรรจุปี๊บ 13.75 ลิตร (12.50 กก.) ตรากุ๊ก,762.5,tin,Ministry of Commerce
+MOC-104,น้ำมันทานตะวันสำเร็จรูป บรรจุขวด (12 ขวด/หีบ) ตรากุ๊ก,855,case,Ministry of Commerce
+MOC-105,น้ำมันทานตะวันสำเร็จรูป บรรจุขวด (12 ขวด/หีบ) ตราองุ่น,867.5,case,Ministry of Commerce
+MOC-106,น้ำมันปาล์มดิบ (ราคาซื้อขายทั่วไปส่งมอบถึงผู้ซื้อ) เกรด A (น้ำมันจากเปลือก),41.75,kg,Ministry of Commerce
+MOC-107,น้ำมันปาล์มดิบ (ราคาซื้อขายทั่วไปส่งมอบถึงผู้ซื้อ) เกรด B (น้ำมันรวม),40.25,kg,Ministry of Commerce
+MOC-108,น้ำมันปาล์มดิบ น้ำมันเมล็ดในปาล์มดิบ,64.5,kg,Ministry of Commerce
+MOC-109,น้ำมันปาล์มบริสุทธิ์ สเตอรีน (ราคาซื้อขายทั่วไปส่งมอบถึงผู้ซื้อ),42.38,kg,Ministry of Commerce
+MOC-110,น้ำมันปาล์มบริสุทธิ์ โอลีอีน (ราคาซื้อขายทั่วไปส่งมอบถึงผู้ซื้อ),46.38,kg,Ministry of Commerce
+MOC-111,น้ำมันปาล์มสำเร็จรูป (ราคา VAT โรงกลั่นส่งมอบถึงยี่ปั๊ว) บรรจุปี๊บ 13.75 ลิตร (12.50 กก.) ตราทับทิม,670,tin,Ministry of Commerce
+MOC-112,น้ำมันปาล์มสำเร็จรูป (ราคารวม VAT โรงกลั่นส่งมอบถึงยี่ปั๊ว) บรรจุปีบ 13.75 ลิตร (12.50 กก.) ตราเกสร,710,tin,Ministry of Commerce
+MOC-113,น้ำมันปาล์มสำเร็จรูป (ราคารวม VAT โรงกลั่นส่งมอบถึงยี่ปั๊ว) บรรจุปีบ 13.75 ลิตร (12.50 กก.) ตรามรกต,695,tin,Ministry of Commerce
+MOC-114,น้ำมันปาล์มสำเร็จรูป (ราคารวม VAT โรงกลั่นส่งมอบถึงยี่ปั๊ว) บรรจุปีบ 13.75 ลิตร (12.50 กก.) ตราหยก,680,tin,Ministry of Commerce
+MOC-115,น้ำมันปาล์มสำเร็จรูป (ราคารวม VAT โรงกลั่นส่งมอบถึงยี่ปั๊ว) บรรจุปีบ 13.75 ลิตร (12.50 กก.) ตราโอลีน,740,tin,Ministry of Commerce
+MOC-116,น้ำมันปาล์มสำเร็จรูป (ราคารวม VAT โรงกลั่นส่งมอบถึงยี่ปั๊ว) บรรจุปีบ 13.75 ลิตร (12.50 กก.),56.4,kg,Ministry of Commerce
+MOC-117,น้ำมันปาล์มสำเร็จรูป บรรจุขวด 1 ลิตร (12 ขวด/หีบ) ตราเกสร,585,case,Ministry of Commerce
+MOC-118,น้ำมันปาล์มสำเร็จรูป บรรจุขวด 1 ลิตร (12 ขวด/หีบ) ตราทับทิม,564,case,Ministry of Commerce
+MOC-119,น้ำมันปาล์มสำเร็จรูป บรรจุขวด 1 ลิตร (12 ขวด/หีบ) ตรามรกต,576,case,Ministry of Commerce
+MOC-120,น้ำมันปาล์มสำเร็จรูป บรรจุขวด 1 ลิตร (12 ขวด/หีบ) ตราหยก,525,case,Ministry of Commerce
+MOC-121,น้ำมันปาล์มสำเร็จรูป บรรจุขวด 1 ลิตร (12 ขวด/หีบ) ตราโอลีน,588,case,Ministry of Commerce
+MOC-122,น้ำมันมะพร้าวดิบ,71,kg,Ministry of Commerce
+MOC-123,น้ำมันมะพร้าวสำเร็จรูป บรรจุขวด 1 ลิตร ตราเนเชอเรล,99,bottle,Ministry of Commerce
+MOC-124,น้ำมันมะพร้าวสำเร็จรูป บรรจุขวด 1 ลิตร ตรารอยไทย,99.5,bottle,Ministry of Commerce
+MOC-125,น้ำมันรำข้าวบริสุทธิ์ บรรจุแกลลอน 5 ลิตร ตราคิง,332,gallon,Ministry of Commerce
+MOC-126,เนื้อมะพร้าวขาว รับซื้อหน้าโรงงาน,24,kg,Ministry of Commerce
+MOC-127,เนื้อมะพร้าวแห้ง 90%,29.5,kg,Ministry of Commerce
+MOC-128,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.กระบี่,7.9,kg,Ministry of Commerce
+MOC-129,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.ชลบุรี,8.05,kg,Ministry of Commerce
+MOC-130,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.ชุมพร,7.9,kg,Ministry of Commerce
+MOC-131,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.ตรัง,7.6,kg,Ministry of Commerce
+MOC-132,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.นครศรีธรรมราช,8.5,kg,Ministry of Commerce
+MOC-133,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.ปัตตานี,7.5,kg,Ministry of Commerce
+MOC-134,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.พังงา,8.63,kg,Ministry of Commerce
+MOC-135,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.สตูล,7.5,kg,Ministry of Commerce
+MOC-136,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%) จ.สุราษฎร์ธานี,7.95,kg,Ministry of Commerce
+MOC-137,ผลปาล์มทะลาย คุณภาพเปอร์เซ็นต์น้ำมัน (18%),7.9,kg,Ministry of Commerce
+MOC-138,มะพร้าวทับสะแก ผลใหญ่ (ปอกเปลือก),23,fruit,Ministry of Commerce
+MOC-139,เมล็ดถั่วเหลือง เกรดสกัดน้ำมัน (สกัดน้ำมัน ความชื้นไม่เกิน 13%),22.25,kg,Ministry of Commerce
+MOC-140,เมล็ดในปาล์ม กะเทาะเปลือก,30.38,kg,Ministry of Commerce
+MOC-141,ละหุ่ง (กะเทาะเปลือก),20,kg,Ministry of Commerce
+MOC-142,กล้วยไข่ กลาง,25,bunch,Ministry of Commerce
+MOC-143,กล้วยไข่ ใหญ่,37.5,bunch,Ministry of Commerce
+MOC-144,กล้วยน้ำว้า,30,bunch,Ministry of Commerce
+MOC-145,กล้วยหอมทอง ใหญ่ (14 ผล),75,bunch,Ministry of Commerce
+MOC-146,แตงโม พันธุ์กินรี,17.5,kg,Ministry of Commerce
+MOC-147,ฝรั่งกิมจู คละ,17.5,kg,Ministry of Commerce
+MOC-148,ฝรั่งกิมจู คัด,30,kg,Ministry of Commerce
+MOC-149,มะม่วงเขียวเสวย เบอร์ 0,37.5,kg,Ministry of Commerce
+MOC-150,มะม่วงเขียวเสวย เบอร์ 1,27.5,kg,Ministry of Commerce
+MOC-151,มะม่วงน้ำดอกไม้ เบอร์ 0,45,kg,Ministry of Commerce
+MOC-152,มะม่วงน้ำดอกไม้ เบอร์ 1,32.5,kg,Ministry of Commerce
+MOC-153,มะละกอแขกดำ,30,kg,Ministry of Commerce
+MOC-154,มะละกอฮอลแลนด์,30,kg,Ministry of Commerce
+MOC-155,ลำไย อีดอ,55,kg,Ministry of Commerce
+MOC-156,ส้มเขียวหวาน สายน้ำผึ้ง เบอร์ 4,37.5,kg,Ministry of Commerce
+MOC-157,ส้มเขียวหวาน สายน้ำผึ้ง เบอร์ 5,47.5,kg,Ministry of Commerce
+MOC-158,ส้มเขียวหวาน สายน้ำผึ้ง เบอร์ 6,57.5,kg,Ministry of Commerce
+MOC-159,ส้มโอ ขาวน้ำผึ้ง เล็ก,45,fruit,Ministry of Commerce
+MOC-160,ส้มโอ ขาวน้ำผึ้ง ใหญ่,85,fruit,Ministry of Commerce
+MOC-161,สับปะรด ศรีราชา เบอร์ 1,27.5,kg,Ministry of Commerce
+MOC-162,สับปะรด ศรีราชา เบอร์ 2,22,kg,Ministry of Commerce
+MOC-163,สับปะรด ศรีราชา เบอร์ 3,19,kg,Ministry of Commerce
+MOC-164,กระสอบป่าน 29x43 นิ้ว (ใหม่),29,bag,Ministry of Commerce
+MOC-165,กระสอบป่าน 29x43 นิ้ว ใช้แล้ว (มีตรา),12,bag,Ministry of Commerce
+MOC-166,กระสอบป่าน 29x43 นิ้ว ใช้แล้ว (ไม่มีตรา),17,bag,Ministry of Commerce
+MOC-167,ข้าวขาว 10% (ข้าวใหม่),1155,100kg,Ministry of Commerce
+MOC-168,ข้าวขาว 10%,1145,100kg,Ministry of Commerce
+MOC-169,ข้าวขาว 100% ชั้น 1 (ข้าวใหม่),1345,100kg,Ministry of Commerce
+MOC-170,ข้าวขาว 100% ชั้น 1,1335,100kg,Ministry of Commerce
+MOC-171,ข้าวขาว 100% ชั้น 2 (ข้าวใหม่),1245,100kg,Ministry of Commerce
+MOC-172,ข้าวขาว 100% ชั้น 2,1275,100kg,Ministry of Commerce
+MOC-173,ข้าวขาว 100% ชั้น 3 (ข้าวใหม่),1235,100kg,Ministry of Commerce
+MOC-174,ข้าวขาว 100% ชั้น 3,1285,100kg,Ministry of Commerce
+MOC-175,ข้าวขาว 15% (ข้าวใหม่),1125,100kg,Ministry of Commerce
+MOC-176,ข้าวขาว 25% (ข้าวใหม่),1105,100kg,Ministry of Commerce
+MOC-177,ข้าวขาว 5% (ข้าวใหม่),1195,100kg,Ministry of Commerce
+MOC-178,ข้าวขาว 5%,1255,100kg,Ministry of Commerce
+MOC-179,ข้าวนึ่ง 100%,1225,100kg,Ministry of Commerce
+MOC-180,ข้าวนึ่ง 5%,1175,100kg,Ministry of Commerce
+MOC-181,ข้าวเปลือกเจ้า 5% นาปรัง จ.สุพรรณบุรี,7700,ton,Ministry of Commerce
+MOC-182,ข้าวเปลือกเจ้า,7700,ton,Ministry of Commerce
+MOC-183,ข้าวเปลือกปทุมธานี,10050,ton,Ministry of Commerce
+MOC-184,ข้าวเปลือกหอมมะลินอกพื้นที่,14650,ton,Ministry of Commerce
+MOC-185,ข้าวเปลือกหอมมะลิ,16500,ton,Ministry of Commerce
+MOC-186,ข้าวเปลือกเหนียวเมล็ดยาว,12000,ton,Ministry of Commerce
+MOC-187,ข้าวสารเหนียว 10% เมล็ดยาว (ข้าวใหม่),2440,100kg,Ministry of Commerce
+MOC-188,ข้าวสารเหนียว 10% เมล็ดยาว,2340,100kg,Ministry of Commerce
+MOC-189,ข้าวสารเหนียว 10% เมล็ดสั้น (ข้าวใหม่),2240,100kg,Ministry of Commerce
+MOC-190,ข้าวสารเหนียว 10% เมล็ดสั้น,2140,100kg,Ministry of Commerce
+MOC-191,ข้าวสารเหนียว กข.6 (ข้าวใหม่),2540,100kg,Ministry of Commerce
+MOC-192,ข้าวสารเหนียว กข.6,2340,100kg,Ministry of Commerce
+MOC-193,ข้าวหอมจังหวัด (ข้าวใหม่),3245,100kg,Ministry of Commerce
+MOC-194,ข้าวหอมจังหวัด,3245,100kg,Ministry of Commerce
+MOC-195,ข้าวหอมปทุมธานี (ข้าวใหม่),1995,100kg,Ministry of Commerce
+MOC-196,ข้าวหอมปทุมธานี,1995,100kg,Ministry of Commerce
+MOC-197,ข้าวหอมมะลิ 100% ชั้น 1 (ข้าวใหม่),3855,100kg,Ministry of Commerce
+MOC-198,ข้าวหอมมะลิ 100% ชั้น 1,3855,100kg,Ministry of Commerce
+MOC-199,ข้าวหอมมะลิ 100% ชั้น 2 (ข้าวใหม่),3495,100kg,Ministry of Commerce
+MOC-200,ข้าวหอมมะลิ 100% ชั้น 2,3495,100kg,Ministry of Commerce
+MOC-201,ปลายข้าว เอ วัน พิเศษ (ข้าวใหม่),945,100kg,Ministry of Commerce
+MOC-202,ปลายข้าว เอ วัน พิเศษ,945,100kg,Ministry of Commerce
+MOC-203,ปลายข้าวขาว ซี วัน,995,100kg,Ministry of Commerce
+MOC-204,ปลายข้าวขาว เอ วัน เลิศ (ข้าวใหม่),1045,100kg,Ministry of Commerce
+MOC-205,ปลายข้าวขาว เอ วัน เลิศ,1045,100kg,Ministry of Commerce
+MOC-206,ปลายข้าวนึ่ง เอ วัน,845,100kg,Ministry of Commerce
+MOC-207,ปลายข้าวสารเหนียว เอ วัน (ข้าวใหม่),1645,100kg,Ministry of Commerce
+MOC-208,ปลายข้าวสารเหนียว เอ วัน,1645,100kg,Ministry of Commerce
+MOC-209,ปลายข้าวหอมปทุมธานี (ข้าวใหม่),1095,100kg,Ministry of Commerce
+MOC-210,ปลายข้าวหอมปทุมธานี,1095,100kg,Ministry of Commerce
+MOC-211,ปลายข้าวหอมมะลิ (ข้าวใหม่),1145,100kg,Ministry of Commerce
+MOC-212,ปลายข้าวหอมมะลิ,1145,100kg,Ministry of Commerce
+MOC-213,แป้งข้าวเจ้าโม่น้ำ,805,3 boxes (10kg each),Ministry of Commerce

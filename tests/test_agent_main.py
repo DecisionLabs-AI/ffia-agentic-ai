@@ -33,13 +33,13 @@ class AgentMainTests(unittest.TestCase):
                 content="",
                 tool_calls=[
                     {"id": "call_search", "name": "search_tool", "args": {"query": "diesel"}},
-                    {"id": "call_bigquery", "name": "bigquery_tool", "args": {"sql": "SELECT 1"}},
+                    {"id": "call_postgres", "name": "postgres_tool", "args": {"sql": "SELECT 1"}},
                 ],
             ),
             ToolMessage(
-                content="bigquery rows",
-                name="bigquery_tool",
-                tool_call_id="call_bigquery",
+                content="postgres rows",
+                name="postgres_tool",
+                tool_call_id="call_postgres",
             ),
             ToolMessage(
                 content="search results",
@@ -54,9 +54,20 @@ class AgentMainTests(unittest.TestCase):
             trace,
             [
                 ("search_tool", "search results"),
-                ("bigquery_tool", "bigquery rows"),
+                ("postgres_tool", "postgres rows"),
             ],
         )
+
+    def test_invoice_questions_use_latest_invoice_for_current_user_only(self):
+        with patch.object(agent_main, "get_latest_invoice", return_value={"invoice_no": "INV-001"}) as mock_latest:
+            with patch.object(
+                agent_main.agent,
+                "invoke",
+                return_value={"messages": [AIMessage(content="Scoped invoice answer.")]},
+            ):
+                agent_main.run_agent("analyze my invoice", current_user_id="alice")
+
+        mock_latest.assert_called_once_with("alice")
 
 
 if __name__ == "__main__":

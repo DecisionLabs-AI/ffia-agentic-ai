@@ -1,6 +1,6 @@
 # =============================================================================
 # FFIA — app/utils/ocr.py
-# Real OCR extraction using Gemini 2.5 Flash Vision.
+# Real OCR extraction using Gemini 2.5 Flash Vision (via Vertex AI).
 # Sends the uploaded invoice image to Gemini, receives structured JSON,
 # normalizes it, and returns the canonical FFIA invoice dict.
 # =============================================================================
@@ -16,7 +16,7 @@ from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage
 
 load_dotenv()
@@ -33,54 +33,75 @@ _log = logging.getLogger("ffia.ocr")
 _llm = None
 
 def _get_llm():
-    """Return the Gemini Vision model, constructing it once on first call."""
+    """Return the Gemini Vision model (Vertex AI), constructing it once on first call."""
     global _llm
     if _llm is None:
-        _llm = ChatGoogleGenerativeAI(
+        # Step 3a: Authenticated via GOOGLE_APPLICATION_CREDENTIALS (gcp-key.json)
+        _llm = ChatVertexAI(
             model="gemini-2.5-flash",
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            project=os.getenv("GCP_PROJECT_ID"),
+            location=os.getenv("GCP_LOCATION", "asia-southeast1"),
             temperature=0.0,        # Deterministic extraction
-            max_output_tokens=2048,
+            max_output_tokens=8192, # Long receipts (19+ items with Thai names) need headroom
         )
     return _llm
 
-# Step 4: Extraction prompt — tells Gemini exactly what schema to return
+# Step 4: Extraction prompt — proven structure that produces correct JSON for Thai receipts.
+# Uses line_items/item_name schema (matched by _normalize via dual-key fallback).
 _EXTRACTION_PROMPT = """
-You are an invoice data extraction assistant. Extract ALL data from this invoice image
-and return it as a single valid JSON object with EXACTLY this schema:
+Extract structured invoice data from this receipt image.
 
+STRICT RULES:
+- Output ONLY valid JSON (no markdown, no explanation, no code fences)
+- JSON must always be complete and valid — never truncate
+- If unsure about any field, use null (never break the JSON structure)
+- All number values must be plain numbers (e.g. 29.94 not "29.94" or "฿29.94")
+- Strip all currency symbols and thousand-separator commas from numbers
+- For dates: convert any format (DD/MM/YYYY, MM-DD-YYYY, etc.) to YYYY-MM-DD
+
+Extract these fields:
+- vendor
+- invoice_no
+- invoice_date
+- total_amount
+- line_items (max 20 items)
+
+For each line item:
+- item_name  (Thai or English product name)
+- qty        (default = 1 if unclear)
+- unit_price (if missing, estimate from total ÷ qty)
+- total
+
+IGNORE:
+- product codes (numbers in brackets like [8851639001348])
+- VAT breakdown lines
+- QR codes
+- footer text
+- membership / loyalty point info
+
+If OCR is noisy:
+- prioritize readable Thai and English item names
+- skip rows where the name is fully corrupted or unreadable
+
+If a field is not visible, use these defaults:
+  vendor → "", invoice_no → "", invoice_date → "",
+  total_amount → 0, line_items → []
+
+Return ONLY this JSON structure:
 {
-  "vendor": string,
-  "invoice_no": string,
-  "invoice_date": string,
-  "total_amount": number,
-  "items": [
+  "vendor": "...",
+  "invoice_no": "...",
+  "invoice_date": "...",
+  "total_amount": 0,
+  "line_items": [
     {
-      "name": string,
-      "qty": number,
-      "unit_price": number,
-      "total": number
+      "item_name": "...",
+      "qty": 1,
+      "unit_price": 0,
+      "total": 0
     }
   ]
 }
-
-Rules:
-- Return JSON ONLY.
-- Do not use markdown.
-- Do not use code fences.
-- Do not add explanations or extra text before or after the JSON.
-- Return ONLY valid JSON that can be parsed directly with json.loads().
-- The output MUST be complete and closed JSON.
-- DO NOT truncate output.
-- Ensure the JSON is complete and ends with the final closing }.
-- Return valid JSON even if extraction is partial.
-- If you are unsure about any field, still return valid JSON and use empty fields.
-- All number values must be plain numbers (e.g. 29.94 not "29.94" or "฿29.94").
-- If a field is not visible on the invoice, use these defaults exactly:
-  vendor → "", invoice_no → "", invoice_date → "",
-  total_amount → 0, items → [].
-- Strip all currency symbols and thousand-separator commas from numbers.
-- For dates: convert any format (DD/MM/YYYY, MM-DD-YYYY, etc.) to YYYY-MM-DD.
 """
 
 
@@ -146,13 +167,16 @@ def _normalize(raw: dict) -> dict:
         "items":        [],
     }
 
-    # Step N2: Normalize each line item
-    for item in raw.get("items") or []:
+    # Step N2: Normalize each line item.
+    # Try line_items first (new prompt schema), fall back to items (legacy schema).
+    # Try item_name first (new prompt), fall back to name (legacy).
+    raw_items = raw.get("line_items") or raw.get("items") or []
+    for item in raw_items:
         normalized["items"].append({
-            "name":       _safe_str(item.get("name"),       ""),
-            "qty":        _safe_float(item.get("qty"),       1.0),
+            "name":       _safe_str(item.get("item_name") or item.get("name"), ""),
+            "qty":        _safe_float(item.get("qty"),        1.0),
             "unit_price": _safe_float(item.get("unit_price"), 0.0),
-            "total":      _safe_float(item.get("total"),      0.0),
+            "total":      _safe_float(item.get("total"),       0.0),
         })
 
     return normalized
@@ -216,6 +240,10 @@ def extract_invoice_data(uploaded_file: object) -> dict:
     mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
     mime_type = mime_map.get(ext, "image/jpeg")
 
+    llm = _get_llm()
+    _log.debug("Model config — model: %s, max_output_tokens: %s",
+               getattr(llm, "model", "unknown"),
+               getattr(llm, "max_output_tokens", "unknown"))
     _log.debug("Sending image to Gemini Vision — file: %s, size: %d bytes, mime: %s",
                uploaded_file.name, len(raw_bytes), mime_type)
 
@@ -233,7 +261,7 @@ def extract_invoice_data(uploaded_file: object) -> dict:
 
     # Step 5d: Call Gemini Vision
     try:
-        response = _get_llm().invoke([message])
+        response = llm.invoke([message])
         raw_text = _coerce_response_text(response.content)
     except Exception as e:
         _log.error("Gemini Vision call failed: %s", e)

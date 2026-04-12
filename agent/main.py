@@ -1,6 +1,6 @@
 # =============================================================================
 # FFIA — agent/main.py
-# LangGraph ReAct agent with Gemini 2.5 Flash (Google AI API) + 2 tools:
+# LangGraph ReAct agent with Gemini 2.5 Flash (Vertex AI) + 2 tools:
 #   - PostgreSQL: query restaurant cost data
 #   - WebSearch: look up Bangkok oil prices and Thai fuel news
 # =============================================================================
@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Step 3: LangChain + LangGraph imports
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
@@ -33,6 +33,8 @@ from agent.tools.postgres_tool import (
     set_postgres_tool_user_id,
 )
 from agent.tools.search_tool import search_tool
+from agent.tools.oil_price_tool import oil_price_tool
+from agent.tools.ingredient_price_tool import ingredient_price_tool
 from data.db import get_latest_invoice
 
 
@@ -50,8 +52,10 @@ def _load_system_prompt() -> str:
 def _validate_env():
     """Warn loudly if critical credentials are missing."""
     missing = []
-    if not os.getenv("GOOGLE_API_KEY"):
-        missing.append("GOOGLE_API_KEY")
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        missing.append("GOOGLE_APPLICATION_CREDENTIALS")
+    if not os.getenv("GCP_PROJECT_ID"):
+        missing.append("GCP_PROJECT_ID")
     if not os.getenv("DATABASE_URL"):
         missing.append("DATABASE_URL")
     if missing:
@@ -69,17 +73,18 @@ def _get_agent():
     """Return the LangGraph ReAct agent, constructing it once on first call."""
     global _agent_instance
     if _agent_instance is None:
-        # Step 7a: Build LLM
-        llm = ChatGoogleGenerativeAI(
+        # Step 7a: Build LLM — authenticated via GOOGLE_APPLICATION_CREDENTIALS (gcp-key.json)
+        llm = ChatVertexAI(
             model="gemini-2.5-flash",
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            project=os.getenv("GCP_PROJECT_ID"),
+            location=os.getenv("GCP_LOCATION", "asia-southeast1"),
             temperature=0.1,            # Deterministic output for data analysis
             max_output_tokens=2048,
         )
         # Step 7b: Build agent graph (Thought/Action/Observation loop)
         _agent_instance = create_react_agent(
             model=llm,
-            tools=[postgres_tool, search_tool],
+            tools=[postgres_tool, search_tool, oil_price_tool, ingredient_price_tool],
             prompt=_load_system_prompt(),
         )
     return _agent_instance

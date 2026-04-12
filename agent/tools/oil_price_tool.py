@@ -1,0 +1,169 @@
+"""
+oil_price_tool.py — Fetch latest fuel price from the Bangchak Oil Price API.
+
+API:  https://oil-price.bangchak.co.th/ApiOilPrice2/en
+Supports: Diesel, Gasohol 95/91, E20, E85, Hi Diesel S, Hi Premium Diesel Plus.
+"""
+
+# Step 1: Minimal imports — no CSV, no pandas, no Google Sheet logic
+import json
+import warnings
+from datetime import datetime
+
+import requests
+import urllib3
+from langchain_core.tools import tool
+
+# Step 2: Bangchak API endpoint (English locale)
+BANGCHAK_API_URL = "https://oil-price.bangchak.co.th/ApiOilPrice2/en"
+
+# Actual response structure (verified from live API):
+#   data       → list[dict], take data[0]
+#   data[0]["OilList"]      → JSON string  (must json.loads())
+#   each product["OilName"] → e.g. "DIESEL B20", "Gasohol 95 S EVO"
+#   each product["PriceToday"] → float
+#   data[0]["OilPriceDate"] → "10/04/2026"
+
+# Step 3: Alias map — normalised user input → OilName substring keyword
+_FUEL_ALIASES: dict[str, str] = {
+    # Diesel
+    "diesel":       "diesel",
+    "ดีเซล":        "diesel",
+    "b20":          "diesel",
+    # Gasohol 95
+    "gasohol 95":   "gasohol 95",
+    "95":           "gasohol 95",
+    "เบนซิน 95":    "gasohol 95",
+    "g95":          "gasohol 95",
+    # Gasohol 91
+    "gasohol 91":   "gasohol 91",
+    "91":           "gasohol 91",
+    "เบนซิน 91":    "gasohol 91",
+    "g91":          "gasohol 91",
+    # E20 / E85
+    "e20":          "e20",
+    "gasohol e20":  "e20",
+    "e85":          "e85",
+    "gasohol e85":  "e85",
+    # Premium diesel grades
+    "hi diesel s":          "hi diesel s",
+    "hi diesel":            "hi diesel",
+    "hi premium diesel":    "hi premium diesel",
+}
+
+
+def _parse_oil_list(wrapper: dict) -> list:
+    """Step 4: Decode OilList from JSON string → Python list."""
+    raw = wrapper.get("OilList")
+    if not raw:
+        return []
+    return json.loads(raw) if isinstance(raw, str) else raw
+
+
+def _resolve_keyword(fuel_type: str) -> str:
+    """Step 5: Normalise user input to the OilName search keyword."""
+    return _FUEL_ALIASES.get(fuel_type.strip().lower(), fuel_type.strip().lower())
+
+
+def _find_fuel(items: list, keyword: str) -> dict | None:
+    """Step 6: Return first product whose OilName contains keyword (case-insensitive)."""
+    for item in items:
+        if keyword.lower() in str(item.get("OilName") or "").lower():
+            return item
+    return None
+
+
+def get_oil_price_from_bangchak(fuel_type: str = "diesel") -> dict:
+    """
+    Fetch the latest price for a given fuel type from the Bangchak Oil Price API.
+
+    Args:
+        fuel_type: English name, Thai alias, or abbreviation.
+                   Defaults to "diesel".
+                   Examples: "diesel", "ดีเซล", "g95", "เบนซิน 91", "e20".
+
+    Returns a dict with keys:
+        oil_type (str), price_per_liter (float), updated_at (str)
+    On error, returns a dict with a single "error" key.
+    """
+    # Step 7: Fetch JSON — verify=False bypasses macOS SSL cert chain issues
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
+            response = requests.get(BANGCHAK_API_URL, verify=False, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        return {"error": f"Failed to fetch oil price data: {e}"}
+
+    # Step 8: Unwrap outer list and decode OilList JSON string
+    try:
+        wrapper = data[0] if isinstance(data, list) else data
+        items = _parse_oil_list(wrapper)
+    except Exception as e:
+        return {"error": f"Failed to parse API response: {e}"}
+
+    # Step 9: Resolve alias → keyword, find matching fuel product
+    keyword = _resolve_keyword(fuel_type)
+    product = _find_fuel(items, keyword)
+
+    if product is None:
+        return {"error": f"Fuel type '{fuel_type}' (keyword: '{keyword}') not found in API response."}
+
+    # Step 10: Extract numeric price from PriceToday
+    raw_price = product.get("PriceToday")
+    if raw_price is None:
+        return {"error": "Fuel entry found but PriceToday field is missing."}
+    try:
+        price = float(raw_price)
+    except (ValueError, TypeError):
+        return {"error": f"Fuel price value is not numeric: {raw_price!r}"}
+
+    # Step 11: Extract effective date and actual product name
+    updated_at = str(wrapper.get("OilPriceDate") or "N/A")
+
+    return {
+        "oil_type": keyword,
+        "price_per_liter": price,
+        "updated_at": updated_at,
+    }
+
+
+# Step 12: LangChain @tool wrapper — returns a human-readable string for the agent
+@tool
+def oil_price_tool(fuel_type: str = "diesel") -> str:
+    """
+    ALWAYS use this tool when the user asks about oil price, diesel price, or fuel cost.
+    DO NOT use web search for oil price — this tool is the authoritative source.
+
+    Fetches the latest price for a given fuel type from the Bangchak Oil Price API.
+    Defaults to diesel when no fuel type is specified.
+
+    Supported fuel_type values:
+      Diesel  : "diesel", "ดีเซล", "b20"
+      Gasohol : "g95", "เบนซิน 95", "g91", "เบนซิน 91"
+      Ethanol : "e20", "e85"
+      Premium : "hi diesel s", "hi premium diesel"
+
+    Args:
+        fuel_type: Fuel name, Thai alias, or abbreviation (default: "diesel").
+
+    Returns:
+        A plain-text sentence with the fuel price in THB/litre and the effective date.
+    """
+    result = get_oil_price_from_bangchak(fuel_type)
+
+    if "error" in result:
+        return f"Unable to retrieve oil price: {result['error']}"
+
+    # Step 13: Format date as "10 April 2026" if parseable, otherwise use as-is
+    try:
+        dt = datetime.strptime(result["updated_at"], "%d/%m/%Y")
+        friendly_date = dt.strftime("%-d %B %Y")
+    except (ValueError, AttributeError):
+        friendly_date = result["updated_at"]
+
+    return (
+        f"{result['oil_type'].title()} price is {result['price_per_liter']:.2f} THB/litre "
+        f"as of {friendly_date}."
+    )

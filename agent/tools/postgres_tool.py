@@ -6,6 +6,7 @@
 # Step 1: Imports
 import os
 import re
+from contextvars import ContextVar
 import pandas as pd
 import psycopg2
 from dotenv import load_dotenv
@@ -13,42 +14,60 @@ from langchain_core.tools import tool
 
 load_dotenv()
 
-# Step 2: Read database connection URL from environment (never hardcoded)
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Step 2: Runtime config getter — reads DATABASE_URL on demand, not at import time.
+# This ensures .env changes are picked up without restarting Streamlit.
+def _get_database_url() -> str | None:
+    return os.getenv("DATABASE_URL")
+_CURRENT_USER_ID: ContextVar[str | None] = ContextVar("ffia_postgres_tool_user_id", default=None)
 
 # Step 3: Interim FFIA schema contract — gives the LLM a concrete target for SQL generation.
 # If the live schema differs, the agent should inspect information_schema first.
 TABLE_SCHEMA_DESCRIPTION = """
 FFIA PostgreSQL schema guidance:
 
-Primary analysis tables:
-1. restaurant_costs
-   Columns:
-   - restaurant_id (TEXT)
-   - restaurant_name (TEXT)
-   - menu_item (TEXT)
-   - ingredient_cost_thb (NUMERIC)
-   - packaging_cost_thb (NUMERIC)
-   - delivery_fee_thb (NUMERIC)
-   - fuel_surcharge_thb (NUMERIC)
-   - selling_price_thb (NUMERIC)
-   - recorded_date (DATE)
+Tenant-scoped invoice tables (always filter by user_id):
 
-2. oil_prices
+1. invoices
    Columns:
-   - price_date (DATE)
-   - diesel_price_thb (NUMERIC)
-   - gasohol_91_price_thb (NUMERIC)
-   - gasohol_95_price_thb (NUMERIC)
-   - source (TEXT)
-   - region (TEXT)
+   - id (SERIAL PRIMARY KEY)
+   - user_id (TEXT)          -- tenant identifier — ALWAYS include in WHERE clause
+   - vendor (TEXT)
+   - invoice_no (TEXT)
+   - invoice_date (DATE)
+   - total_amount (NUMERIC)
+   - created_at (TIMESTAMPTZ)
 
-Querying rules:
-- Use standard table names (no project/dataset prefix).
-- For menu margin questions, start with restaurant_costs.
-- For oil and fuel trend questions, start with oil_prices.
-- If a requested column or table may not exist, inspect
-  information_schema.columns first with a SELECT query.
+2. invoice_items
+   Columns:
+   - id (SERIAL PRIMARY KEY)
+   - user_id (TEXT)          -- tenant identifier — ALWAYS include in WHERE clause
+   - invoice_id (INTEGER)    -- FK → invoices.id
+   - name (TEXT)             -- ingredient or product name
+   - qty (NUMERIC)
+   - unit_price (NUMERIC)
+   - total (NUMERIC)
+
+3. ingredient_market_prices (global reference — no user_id filter needed)
+   Columns:
+   - id (TEXT PRIMARY KEY)        -- e.g. "MOC-001", "MAK-272716"
+   - ingredient (TEXT)            -- Thai ingredient or packaging name
+   - avg_market_price (NUMERIC)   -- price in THB
+   - unit (TEXT)                  -- e.g. "kg", "piece", "pack", "bunch"
+   - source (TEXT)                -- "Ministry of Commerce" or "Makro"
+   - seeded_at (TIMESTAMP)
+
+   Note: No user_id column — this table is shared across all tenants.
+   Prefer the ingredient_price_tool for ingredient lookups; use SQL only for
+   aggregations or joins with invoice_items.
+
+Query rules:
+- ALWAYS filter by user_id using the placeholder literal 'current_user_placeholder'
+  for invoices and invoice_items. The tool replaces this with the real session user_id.
+  Example: WHERE user_id = 'current_user_placeholder'
+- ingredient_market_prices does NOT require a user_id filter.
+- Use ILIKE for partial name matching: WHERE name ILIKE '%egg%'
+- Use standard PostgreSQL syntax. No backticks, no BigQuery qualifiers.
+- If a column may not exist, inspect information_schema.columns first.
 """
 
 _BLOCK_COMMENT_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -69,6 +88,7 @@ _FORBIDDEN_SQL_PATTERNS = [
     (re.compile(r"(?m)^\s*END\b", re.IGNORECASE), "END"),
     (re.compile(r"\bCALL\b", re.IGNORECASE), "CALL"),
 ]
+_INVOICE_TABLE_PATTERN = re.compile(r"\b(invoices|invoice_items)\b", re.IGNORECASE)
 
 
 def _strip_sql_comments_and_literals(sql: str) -> str:
@@ -76,6 +96,23 @@ def _strip_sql_comments_and_literals(sql: str) -> str:
     without_block_comments = _BLOCK_COMMENT_PATTERN.sub(" ", sql)
     without_comments = _LINE_COMMENT_PATTERN.sub(" ", without_block_comments)
     return _STRING_LITERAL_PATTERN.sub("''", without_comments)
+
+
+def _references_invoice_tables(sql: str) -> bool:
+    """Return True when the SQL references tenant-scoped invoice tables."""
+    normalized = _strip_sql_comments_and_literals(sql)
+    return bool(_INVOICE_TABLE_PATTERN.search(normalized))
+
+
+def set_postgres_tool_user_id(user_id: str | None):
+    """Bind the current agent run to a tenant for invoice-table isolation."""
+    normalized = str(user_id or "").strip() or None
+    return _CURRENT_USER_ID.set(normalized)
+
+
+def reset_postgres_tool_user_id(token) -> None:
+    """Restore the previous tenant context after an agent run."""
+    _CURRENT_USER_ID.reset(token)
 
 
 def _validate_select_sql(sql: str) -> tuple[bool, str]:
@@ -124,9 +161,14 @@ def postgres_tool(sql: str) -> str:
     SELECT statements may begin with SELECT or WITH, but scripting, DDL, mutations,
     CALL statements, and semicolon-delimited multi-statement execution are blocked.
 
+    IMPORTANT: Always use the literal string 'current_user_placeholder' in the WHERE
+    clause for user_id. The tool replaces it with the real session user_id automatically.
+    Never ask the user for their user_id — it is injected by the session context.
+
     Example:
-    SELECT menu_item, selling_price_thb
-    FROM restaurant_costs
+    SELECT vendor, invoice_no, total_amount
+    FROM invoices
+    WHERE user_id = 'current_user_placeholder'
     LIMIT 5
     """
     # Step 4a: Security guardrail — enforce a single safe SELECT statement.
@@ -134,27 +176,40 @@ def postgres_tool(sql: str) -> str:
     if not is_valid:
         return validated_sql_or_error
 
-    if not DATABASE_URL:
+    database_url = _get_database_url()
+    if not database_url:
         return "Error: DATABASE_URL is not set. Add it to your .env file."
 
     try:
         safe_sql = validated_sql_or_error
+        current_user_id = _CURRENT_USER_ID.get()
 
-        # Step 4b: Inject LIMIT 50 if not already present to cap output
+        if _references_invoice_tables(safe_sql) and not current_user_id:
+            return "Error: Invoice queries require an authenticated user context."
+
+        # Step 4b: Replace the user_id placeholder with the real session user_id.
+        # This allows the agent to write portable SQL without knowing the actual value.
+        if current_user_id:
+            safe_sql = safe_sql.replace("'current_user_placeholder'", f"'{current_user_id}'")
+
+        # Step 4c: Inject LIMIT 50 if not already present to cap output
         if "LIMIT" not in safe_sql.upper():
             safe_sql = safe_sql + " LIMIT 50"
 
-        # Step 4c: Execute query via psycopg2
-        with psycopg2.connect(DATABASE_URL) as conn:
+        # Step 4d: Execute query via psycopg2
+        with psycopg2.connect(database_url) as conn:
+            if current_user_id:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT set_config('app.current_user_id', %s, false)", (current_user_id,))
             df = pd.read_sql_query(safe_sql, conn)
 
-        # Step 4d: Return empty message or markdown table
+        # Step 4e: Return empty message or markdown table
         if df.empty:
             return "Query returned no results."
         return df.to_markdown(index=False)
 
     except Exception as e:
-        # Step 4e: Return error string — never raise, so agent can handle gracefully
+        # Step 4f: Return error string — never raise, so agent can handle gracefully
         return f"PostgreSQL error: {str(e)}"
 
 
