@@ -1713,8 +1713,11 @@ def _render_profile_step_2() -> None:
     if st.session_state.get("step2_seat_range") not in _valid_seats:
         st.session_state.pop("step2_seat_range", None)
 
-    if len(_valid_seats) == 1:
-        # Step 2e: Single option — show as read-only info field, no user input needed
+    if _store_type == "ghost_kitchen":
+        # Step 2e: Delivery-only — seat range is always "0", hide the field entirely
+        _seat_range = "0"
+    elif len(_valid_seats) == 1:
+        # Step 2f: Single option (non-delivery) — show as read-only info field
         _seat_range = _valid_seats[0]
         st.text_input(
             "Seat Range",
@@ -1724,7 +1727,7 @@ def _render_profile_step_2() -> None:
             key="step2_seat_range_display",
         )
     else:
-        # Step 2f: Multiple options — show selectbox with only valid choices
+        # Step 2g: Multiple options — show selectbox with only valid choices
         _seat_idx = (
             _valid_seats.index(st.session_state["profile_seat_range"])
             if st.session_state["profile_seat_range"] in _valid_seats else 0
