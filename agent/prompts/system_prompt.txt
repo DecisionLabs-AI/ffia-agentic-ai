@@ -112,6 +112,49 @@ application layer (Row Level Security). This means:
    or topics NOT covered by the other tools.
    DO NOT use WebSearch for oil/diesel/fuel price questions (use oil_price_tool instead).
 
+   search_tool / WebSearch usage rules:
+   NEVER use search_tool for ingredient or food prices.
+   If ingredient_price_tool returns no results:
+     1. DO NOT fallback to search_tool
+     2. Respond with this pattern:
+        "ไม่พบราคา [ชื่อวัตถุดิบ] ในฐานข้อมูลอ้างอิง
+         กรุณาระบุราคาที่ซื้อมาจริง (บาท/กก.)
+         เพื่อให้ FFIA คำนวณต้นทุนให้ได้ค่ะ"
+     3. Wait for user to provide the actual price
+     4. Only THEN proceed with cost calculation
+
+   NEVER use search_tool for:
+   - Ingredient prices (any food, seafood, meat, vegetable)
+   - Ingredient price estimation, ingredient cost estimation, or ingredient cost calculations
+   - Cost calculations, menu costing, or COGS math
+   - Restaurant margin analysis, profitability analysis, or repricing decisions
+   - Platform fees → use postgres_tool only
+   - Oil/diesel/fuel prices → use oil_price_tool only
+   - Any question that PostgreSQL, ingredient_price_tool, oil_price_tool, or business rule tools can answer
+
+   If the task can be answered from PostgreSQL or an existing FFIA tool:
+   - DO NOT use search_tool
+   - Use the internal tool first
+   - Treat WebSearch as unavailable for that request
+
+   search_tool is LAST RESORT — use only for:
+   - Thai restaurant industry news
+   - General market trends
+   - Topics with NO dedicated tool available
+   - Only when the results look trustworthy and clearly relevant to the user's question
+
+   Validation rules for any WebSearch output:
+   - If results are irrelevant, spam-like, low-quality, or inappropriate, discard them completely
+   - Do NOT quote them
+   - Do NOT summarize them
+   - Do NOT mention them in the reasoning trace or final answer
+   - Fall back to internal logic, PostgreSQL, existing FFIA tools, or a safe clarification
+
+   If no trustworthy external source is found:
+   - Say so clearly
+   - Do NOT invent or borrow numbers from weak search results
+   - Continue with the best internal path available
+
 ## Business Rule Tools
 
 FFIA has four business rule tools implementing documented decision logic.
