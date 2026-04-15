@@ -35,12 +35,12 @@ concrete actions — with full reasoning transparency so owners can trust the ou
 
 ---
 
-## Current State (W2)
+## Current State (W3)
 
 - **Agent**: LangGraph ReAct agent powered by Gemini 2.5 Flash (Google AI API)
-- **Tools**: PostgreSQL SQL tool + DuckDuckGo web search tool — both live
-- **UI**: Streamlit chat interface with dark sidebar, reasoning trace expander (collapsed by default)
-- **Data**: PostgreSQL connected via `DATABASE_URL`, including saved invoice records
+- **Tools**: PostgreSQL SQL tool, Bangchak oil price API tool, 4 business-rule tools (platform floor guard, promo profitability, COGS alert, scenario classifier), DuckDuckGo web search
+- **UI**: Streamlit chat interface with dark sidebar, reasoning trace expander; pages for Dashboard, Data Upload (OCR), and Business Profile Settings
+- **Data**: PostgreSQL connected via `DATABASE_URL` — invoices, invoice items, and restaurant profiles stored with Row-Level Security
 
 ---
 
@@ -51,19 +51,25 @@ concrete actions — with full reasoning transparency so owners can trust the ou
 FFIA is an **agentic AI system** — the AI agent is the product, not a feature bolted onto a dashboard.
 
 ### What the agent does
-1. Fetches today's oil price via web search (DuckDuckGo → EPPO data)
-2. Queries restaurant cost and oil-price data from PostgreSQL
-3. Calculates the real gross margin per menu item (including hidden fuel costs)
-4. Simulates "what if oil goes up 5 baht?" scenarios
-5. Recommends prioritised pricing or ingredient adjustments
-6. Can use the latest saved invoice from PostgreSQL when the user asks about an invoice
-7. Explains its reasoning step by step (transparent ReAct loop)
+1. Fetches today's oil price live from the Bangchak Oil Price API
+2. Queries restaurant cost and invoice data from PostgreSQL (RLS-enforced per user)
+3. Calculates the real gross margin per menu item (including hidden fuel/platform costs)
+4. Evaluates delivery platform profitability (platform floor guard — Rule L1)
+5. Checks whether a planned promotion is financially viable (promo profitability — Rule L3)
+6. Monitors raw material COGS changes and recommends substitutes (COGS alert — Rule L4)
+7. Classifies the business situation into Scenario 1/2/3 and provides an action plan
+8. Explains its reasoning step by step (transparent ReAct loop)
 
 ### Tools the agent uses
 | Tool | File | Purpose |
 |---|---|---|
-| `postgres_tool` | `agent/tools/postgres_tool.py` | Execute SELECT queries against PostgreSQL with read-only guardrails |
-| `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo (no API key needed) |
+| `oil_price_tool` | `agent/tools/oil_price_tool.py` | Live diesel/gasohol prices from Bangchak API (Thai & English aliases) |
+| `postgres_tool` | `agent/tools/postgres_tool.py` | SELECT queries against PostgreSQL with RLS + 50-row cap |
+| `platform_floor_guard_tool` | `agent/tools/business_rules_tool.py` | Platform cost floor check — HEALTHY/WATCH/WARNING/CRITICAL (Rule L1) |
+| `promo_profitability_tool` | `agent/tools/business_rules_tool.py` | Promo viability + psychological pricing recommendation (Rule L3) |
+| `cogs_alert_tool` | `agent/tools/business_rules_tool.py` | COGS impact alert + substitute ingredient map (Rule L4) |
+| `scenario_classifier_tool` | `agent/tools/business_rules_tool.py` | Classify situation into Scenario 1/2/3 with action plan |
+| `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo (fallback for general queries) |
 
 ### LLM
 Gemini 2.5 Flash via Google AI API (`langchain-google-genai`) — powers the agent's ReAct reasoning loop.
@@ -75,28 +81,39 @@ Gemini 2.5 Flash via Google AI API (`langchain-google-genai`) — powers the age
 ```
 agentic-ai-mcp/
 ├── agent/
-│   ├── main.py                  # LangGraph ReAct agent + run_agent() function
+│   ├── main.py                      # LangGraph ReAct agent + run_agent() function
 │   ├── tools/
-│   │   ├── postgres_tool.py     # PostgreSQL SQL tool (SELECT only)
-│   │   └── search_tool.py       # DuckDuckGo web search tool
+│   │   ├── oil_price_tool.py        # Live oil price from Bangchak API
+│   │   ├── business_rules_tool.py   # L1 platform guard, L3 promo, L4 COGS, scenario classifier
+│   │   ├── postgres_tool.py         # PostgreSQL SELECT tool (RLS-enforced, 50-row cap)
+│   │   └── search_tool.py           # DuckDuckGo web search tool
 │   └── prompts/
-│       └── system_prompt.txt    # Agent role, tool guidance, output format
+│       └── system_prompt.txt        # Agent role, tool guidance, Bangkok/THB context, output format
 ├── app/
-│   ├── main.py                  # Streamlit chat UI (dark sidebar + reasoning trace)
+│   ├── main.py                      # Streamlit UI — Dashboard, Data Upload, Business Profile Settings
 │   ├── utils/
-│   │   └── ocr.py               # OCR extraction and JSON cleanup for invoice uploads
+│   │   ├── auth.py                  # PBKDF2 password verification, session helpers
+│   │   └── ocr.py                   # Claude Vision invoice OCR and JSON cleanup
 │   └── assets/
-│       └── ffia_logo_design.png # Sidebar logo
+│       ├── ffia_logo_design.png     # Sidebar logo
+│       ├── grab.png                 # Grab delivery platform icon
+│       ├── lineman.png              # LINE MAN delivery platform icon
+│       ├── shopeefood.png           # Shopee Food delivery platform icon
+│       └── walkin.png               # Walk-in channel icon
 ├── data/
-│   └── db.py                    # PostgreSQL connection helpers and invoice CRUD
+│   └── db.py                        # PostgreSQL helpers — invoice CRUD, restaurant profile upsert, RLS
 ├── docs/
-│   ├── architecture.md          # Agent architecture documentation
-│   └── rubric-status.md         # Weekly milestone & grading tracker
-├── notebooks/                   # Exploratory notebooks
-├── .env.example                 # Environment variable template (safe to commit)
-├── .gitignore                   # Excludes .env, credentials, __pycache__
-├── CLAUDE.md                    # Claude Code instructions for this project
-├── requirements.txt             # Python dependencies
+│   ├── architecture.md              # Agent architecture documentation
+│   ├── business_rules.md            # Margin formulas, cost thresholds, pricing rules
+│   ├── scenarios.md                 # What-if scenario definitions (Scenario 1/2/3)
+│   ├── data_definition.md           # Schema definitions and field meanings
+│   ├── demo_script.md               # Guided demo flow and expected agent responses
+│   └── rubric-status.md             # Weekly milestone & grading tracker
+├── notebooks/                       # Exploratory notebooks
+├── .env.example                     # Environment variable template (safe to commit)
+├── .gitignore                       # Excludes .env, credentials, __pycache__
+├── CLAUDE.md                        # Claude Code instructions for this project
+├── requirements.txt                 # Python dependencies
 └── README.md
 ```
 
@@ -106,9 +123,9 @@ agentic-ai-mcp/
 
 | Source | Type | How Used |
 |---|---|---|
-| EPPO Fuel Prices | Public/Government | Daily oil price fetched via web search |
-| PostgreSQL | Cloud Database | Restaurant cost, oil-price, and saved invoice data queried by the app and agent |
-| DuckDuckGo Web Search | Free API | Real-time news and price lookups |
+| Bangchak Oil Price API | Public/Industry | Live diesel and gasohol prices fetched by `oil_price_tool` |
+| PostgreSQL (Supabase) | Cloud Database | Restaurant cost, invoice, and profile data — RLS per user tenant |
+| DuckDuckGo Web Search | Free API | Real-time news and general price lookups (fallback) |
 
 ---
 
@@ -166,11 +183,12 @@ python agent/main.py
 
 ## Known Limitations & Next Steps
 
-- Oil price data from EPPO is fetched via web search — direct API integration planned for W3.
-- Some restaurant cost data is still seeded/synthetic — broader real-data integration is planned for W3+.
-- Margin calculation and scenario simulation tools planned for W3.
-- Multi-agent pattern (Planner + specialist agents) planned for W4+.
+- Ingredient price tool (`ingredient_price_tool`) planned for W4 — will pull MOC/Makro reference prices from PostgreSQL.
+- `calculate_margin` tool — compute true net margin per menu item using invoice and profile data — planned for W4.
+- `simulate_scenario` tool — what-if oil price sensitivity analysis — planned for W4.
+- Multi-agent pattern (Planner → Data Agent + Margin Agent + Recommendation Agent) planned for W4+.
+- RAG: menu cost history as vector store for trend queries planned for W5+.
 
 ---
 
-*Last updated: W2 — LangGraph ReAct agent, Gemini 2.5 Flash, dark sidebar UI, PostgreSQL + WebSearch live.*
+*Last updated: W3 — Bangchak oil price tool, 4 business-rule tools (L1/L3/L4/Scenario Classifier), OCR invoice upload, Data Upload page, Business Profile Settings page, platform channel assets.*

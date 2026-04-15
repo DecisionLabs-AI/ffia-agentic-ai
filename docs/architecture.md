@@ -115,13 +115,22 @@ User (Streamlit Chat UI — dark sidebar)
 ### 2. Tools
 | Tool | File | Description |
 |---|---|---|
-| `postgres_tool` | `agent/tools/postgres_tool.py` | Executes SELECT queries against PostgreSQL; RLS enforced via `app.current_user_id` session config |
-| `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo — no API key required |
+| `oil_price_tool` | `agent/tools/oil_price_tool.py` | Live diesel/gasohol prices from Bangchak API; Thai and English fuel-name aliases; returns price + effective date |
+| `platform_floor_guard_tool` | `agent/tools/business_rules_tool.py` | Rule L1 — platform cost floor check; classifies as HEALTHY/WATCH/WARNING/CRITICAL |
+| `promo_profitability_tool` | `agent/tools/business_rules_tool.py` | Rule L3 — promo viability check; computes minimum viable price + psychological pricing |
+| `cogs_alert_tool` | `agent/tools/business_rules_tool.py` | Rule L4 — COGS impact alert with cuisine-group substitute ingredient map |
+| `scenario_classifier_tool` | `agent/tools/business_rules_tool.py` | Classifies business situation into Scenario 1/2/3 and returns an action plan |
+| `postgres_tool` | `agent/tools/postgres_tool.py` | SELECT queries against PostgreSQL; RLS enforced via `app.current_user_id` session config |
+| `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo — no API key required; fallback for general queries |
 
 **Security guardrails on PostgreSQL tool:**
 - Only `SELECT` statements accepted — mutations rejected at tool level
 - Results capped at 50 rows to control LLM context size
 - Row-Level Security (RLS) enforced at the database layer — each query is tenant-scoped to the authenticated `user_id`
+
+**Business-rule tools source of truth:**
+- `platform_floor_guard_tool`, `promo_profitability_tool`, `cogs_alert_tool` → `docs/business_rules.md` (Rules L1, L3, L4)
+- `scenario_classifier_tool` → `docs/scenarios.md` (Scenario 1/2/3 selection logic)
 
 ### 3. Prompts
 - **System prompt**: `agent/prompts/system_prompt.txt` — defines FFIA role, available tools, Bangkok/THB context, output format
@@ -159,6 +168,8 @@ User (Streamlit Chat UI — dark sidebar)
 | File | Purpose |
 |---|---|
 | `agent/main.py` | LangGraph agent setup, `run_agent()` public function, `_extract_text()` Gemini content normalizer |
+| `agent/tools/oil_price_tool.py` | Live oil price from Bangchak API — Thai/English aliases, date fields |
+| `agent/tools/business_rules_tool.py` | Business-rule tools: L1 platform floor guard, L3 promo profitability, L4 COGS alert, scenario classifier |
 | `agent/tools/postgres_tool.py` | PostgreSQL SELECT tool for agent — RLS-enforced, 50-row cap |
 | `agent/tools/search_tool.py` | DuckDuckGo web search tool |
 | `agent/prompts/system_prompt.txt` | Agent role, tool guidance, Bangkok/THB context, output format |
@@ -167,6 +178,10 @@ User (Streamlit Chat UI — dark sidebar)
 | `app/utils/ocr.py` | Claude Vision OCR — extracts invoice fields and line items from uploaded images |
 | `data/db.py` | PostgreSQL helpers — invoice CRUD, restaurant profile upsert/fetch, RLS context setup |
 | `app/assets/ffia_logo_design.png` | Sidebar logo (base64-embedded in HTML) |
+| `app/assets/grab.png` | Grab delivery platform icon |
+| `app/assets/lineman.png` | LINE MAN delivery platform icon |
+| `app/assets/shopeefood.png` | Shopee Food delivery platform icon |
+| `app/assets/walkin.png` | Walk-in channel icon |
 | `requirements.txt` | Python dependencies |
 | `.env` | Secrets — never committed (see `.env.example`) |
 
@@ -219,14 +234,15 @@ Returns:
 |---|---|
 | W1 | LangGraph ReAct agent, Gemini 2.5 Flash, DuckDuckGo search tool, dark sidebar UI |
 | W2 | PostgreSQL integration, invoice CRUD (`data/db.py`), RLS tenant isolation, user authentication |
-| W3 | OCR invoice upload (Claude Vision), Data Upload page, Business Profile Settings page, `restaurant_profiles` upsert |
+| W3 | Bangchak oil price tool, 4 business-rule tools (L1/L3/L4/Scenario Classifier), OCR invoice upload (Claude Vision), Data Upload page, Business Profile Settings page, platform channel assets |
 
 ## Planned W4+ Enhancements
-- [ ] `calculate_margin` tool — compute true margin per menu item using invoice and profile data
+- [ ] `ingredient_price_tool` — MOC/Makro reference prices from PostgreSQL
+- [ ] `calculate_margin` tool — compute true net margin per menu item using invoice and profile data
 - [ ] `simulate_scenario` tool — what-if oil price sensitivity analysis
 - [ ] Multi-agent: Planner → Data Agent + Margin Agent + Recommendation Agent
 - [ ] RAG: Menu cost history as vector store for trend queries
 
 ---
 
-*Last updated: W3 — OCR upload, PostgreSQL CRUD, user auth, Business Profile Settings page.*
+*Last updated: W3 — Bangchak oil price tool, business-rule tools (L1/L3/L4/Scenario Classifier), OCR invoice upload, Data Upload page, Business Profile Settings page, platform channel assets.*
