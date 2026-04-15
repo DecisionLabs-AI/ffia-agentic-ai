@@ -191,10 +191,11 @@ User (Streamlit Chat UI — dark sidebar)
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `GOOGLE_API_KEY` | Yes | Gemini API key (get from aistudio.google.com) |
+| `GOOGLE_API_KEY` | Yes | Gemini API key (get from aistudio.google.com) — powers the ReAct agent |
 | `DATABASE_URL` | Yes | PostgreSQL connection URL (`postgresql://user:pass@host:5432/db`) |
 | `FFIA_AUTH_USERS_JSON` | Yes | JSON array of users with `username`, `display_name`, `password_hash` |
-| `ANTHROPIC_API_KEY` | Yes | Claude API key — used by `app/utils/ocr.py` for invoice OCR |
+| `GCP_PROJECT_ID` | Yes | GCP project ID — required by Vertex AI for invoice OCR |
+| `GCP_SERVICE_ACCOUNT_JSON` | Yes | Full service account key JSON (single-line string) — used by `app/utils/ocr.py` for Gemini Vision OCR |
 | `TAVILY_API_KEY` | No | Upgrades web search from DuckDuckGo to Tavily automatically |
 
 ---

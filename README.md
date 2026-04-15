@@ -133,8 +133,9 @@ agentic-ai-mcp/
 
 ### Prerequisites
 - Python 3.10+
-- Google AI API key for Gemini
-- PostgreSQL database accessible via connection URL
+- Google AI API key for Gemini (`GOOGLE_API_KEY`)
+- GCP service account with Vertex AI access (`GCP_SERVICE_ACCOUNT_JSON`, `GCP_PROJECT_ID`) — for invoice OCR
+- PostgreSQL database accessible via connection URL (`DATABASE_URL`)
 
 ### Steps
 
@@ -151,6 +152,9 @@ cp .env.example .env
 # Required:
 #   GOOGLE_API_KEY=your_gemini_api_key_here
 #   DATABASE_URL=postgresql://user:password@host:5432/dbname
+#   FFIA_AUTH_USERS_JSON=[{"username":"...","password_hash":"pbkdf2_sha256$...","display_name":"..."}]
+#   GCP_PROJECT_ID=your-gcp-project-id
+#   GCP_SERVICE_ACCOUNT_JSON=<contents of gcp-key.json as a single-line string>
 
 # Step 4: Create and activate a Python virtual environment
 python -m venv venv
