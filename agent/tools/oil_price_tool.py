@@ -119,13 +119,15 @@ def get_oil_price_from_bangchak(fuel_type: str = "diesel") -> dict:
     except (ValueError, TypeError):
         return {"error": f"Fuel price value is not numeric: {raw_price!r}"}
 
-    # Step 11: Extract effective date and actual product name
+    # Step 11: Extract effective date and system current date
     updated_at = str(wrapper.get("OilPriceDate") or "N/A")
+    data_as_of = str(wrapper.get("OilDateNow") or "N/A")
 
     return {
         "oil_type": keyword,
         "price_per_liter": price,
         "updated_at": updated_at,
+        "data_as_of": data_as_of,
     }
 
 
@@ -156,14 +158,18 @@ def oil_price_tool(fuel_type: str = "diesel") -> str:
     if "error" in result:
         return f"Unable to retrieve oil price: {result['error']}"
 
-    # Step 13: Format date as "10 April 2026" if parseable, otherwise use as-is
-    try:
-        dt = datetime.strptime(result["updated_at"], "%d/%m/%Y")
-        friendly_date = dt.strftime("%-d %B %Y")
-    except (ValueError, AttributeError):
-        friendly_date = result["updated_at"]
+    # Step 13: Format both dates as "DD/MM/YYYY", fallback to raw string on parse error
+    def _fmt(date_str: str) -> str:
+        try:
+            return datetime.strptime(date_str, "%d/%m/%Y").strftime("%d/%m/%Y")
+        except (ValueError, AttributeError):
+            return date_str
+
+    effective_date = _fmt(result["updated_at"])
+    current_date = _fmt(result["data_as_of"])
 
     return (
-        f"{result['oil_type'].title()} price is {result['price_per_liter']:.2f} THB/litre "
-        f"as of {friendly_date}."
+        f"Latest {result['oil_type'].title()} price: {result['price_per_liter']:.2f} THB/L\n"
+        f"Effective since {effective_date}\n"
+        f"Data current as of {current_date}"
     )

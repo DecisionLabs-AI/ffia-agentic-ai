@@ -17,6 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_google_vertexai import ChatVertexAI
+from google.oauth2 import service_account
 from langchain_core.messages import HumanMessage
 
 load_dotenv()
@@ -36,11 +37,21 @@ def _get_llm():
     """Return the Gemini Vision model (Vertex AI), constructing it once on first call."""
     global _llm
     if _llm is None:
-        # Step 3a: Authenticated via GOOGLE_APPLICATION_CREDENTIALS (gcp-key.json)
+        # Step 3a: Load credentials from JSON string (Streamlit Cloud) or fall back to ADC
+        _creds_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+        _credentials = None
+        if _creds_json:
+            _creds_dict = json.loads(_creds_json)
+            _credentials = service_account.Credentials.from_service_account_info(
+                _creds_dict,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+        # Step 3b: Build LLM — gemini-2.5-flash, credentials injected at runtime
         _llm = ChatVertexAI(
             model="gemini-2.5-flash",
             project=os.getenv("GCP_PROJECT_ID"),
-            location=os.getenv("GCP_LOCATION", "asia-southeast1"),
+            location="asia-southeast1",
+            credentials=_credentials,
             temperature=0.0,        # Deterministic extraction
             max_output_tokens=8192, # Long receipts (19+ items with Thai names) need headroom
         )

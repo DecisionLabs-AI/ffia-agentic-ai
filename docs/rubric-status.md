@@ -9,7 +9,7 @@
 | Requirement | Status | Evidence | Week Done |
 |---|---|---|---|
 | LLM Core (at least 1 LLM) | ✅ Complete | Gemini 2.5 Flash via `ChatGoogleGenerativeAI` + `GOOGLE_API_KEY` in `agent/main.py` | W2 |
-| Tool Use (2+ distinct tools, dynamic) | ✅ Complete | `postgres_tool` + `search_tool` + `oil_price_tool` in `agent/tools/` — all wired and live | W3 |
+| Tool Use (2+ distinct tools, dynamic) | ✅ Complete | `postgres_tool` + `search_tool` + `oil_price_tool` + `ingredient_price_tool` + `business_rules_tool` (4 sub-tools) in `agent/tools/` — all wired and live | W3 |
 | Data Integration (real/realistic dataset) | ✅ Complete | Cloud PostgreSQL via `DATABASE_URL`; SELECT queries working | W2 |
 | User Interface (not just terminal) | ✅ Complete | Streamlit Chat UI with dark sidebar, metric cards, reasoning trace | W2 |
 | Reasoning Transparency (visible trace) | ✅ Complete | `st.expander("Agent Reasoning Trace")` shows tool calls + observations per turn | W2 |
@@ -45,7 +45,7 @@
 |---|---|---|---|
 | **W1** | Discover & Align | Repo created, folder structure, problem statement committed | ✅ Complete |
 | **W2** | Agent Skeleton | LangGraph ReAct agent + Gemini 2.5 Flash (Google AI API) + PostgreSQL + WebSearch + Streamlit UI with dark sidebar | ✅ Complete |
-| **W3** | Tools & Data Sprint | Live demo with 2+ tools + real dataset; `oil_price_tool` (GSheet) added | 🔄 In Progress |
+| **W3** | Tools & Data Sprint | Live demo with 5+ tools + real dataset; OCR invoice upload, Data Upload page, Business Profile Settings, business rules tools (L1/L3/L4/Scenario) | ✅ Complete |
 | **W4** | UI & Integration | Full agent via UI, all reasoning steps visible, multi-tool flows | ⬜ Pending |
 | **W5** | Harden & Document | README + architecture.md complete, code freeze, end-to-end tested | ⬜ Pending |
 | **W6** | Final Demo & Submit | Tag v1.0, repo URL submitted, team demo recorded | ⬜ Pending |
@@ -67,6 +67,23 @@
 
 ---
 
+## W3 Deliverables Detail
+
+| Item | Status | Notes |
+|---|---|---|
+| `oil_price_tool` | ✅ | `agent/tools/oil_price_tool.py` — live Bangchak API, Thai/English aliases |
+| `ingredient_price_tool` | ✅ | `agent/tools/ingredient_price_tool.py` — MOC + Makro reference prices from PostgreSQL |
+| `business_rules_tool` (L1) | ✅ | `platform_floor_guard_tool` — platform cost floor guard with HEALTHY/WATCH/WARNING/CRITICAL |
+| `business_rules_tool` (L3) | ✅ | `promo_profitability_tool` — promo viability check with magic-number pricing |
+| `business_rules_tool` (L4) | ✅ | `cogs_alert_tool` — COGS alert with cuisine-group substitution map |
+| `business_rules_tool` (Scenario) | ✅ | `scenario_classifier_tool` — Scenario 1/2/3 classifier with action plans |
+| OCR invoice upload | ✅ | `app/utils/ocr.py` — Claude Vision extracts invoice fields and line items |
+| Data Upload page | ✅ | `app/main.py` — file uploader → OCR → editable form → PostgreSQL save |
+| Business Profile Settings page | ✅ | `app/main.py` — view/edit `restaurant_profiles` (food types, margin thresholds) |
+| Platform channel assets | ✅ | `app/assets/` — Grab, LINE MAN, Shopee Food, Walk-in icons added |
+
+---
+
 ## Security Checklist
 
 | Item | Status |
@@ -84,4 +101,4 @@
 
 *Legend: ✅ Complete | 🔄 In Progress | ⬜ Pending*
 
-*Last updated: W2 (revised) — Migrated LLM to Google AI API key and database to PostgreSQL. All minimum requirements met.*
+*Last updated: W3 — Oil price tool (Bangchak API), ingredient price tool, business rules tools (L1/L3/L4/Scenario Classifier), OCR invoice upload (Claude Vision), Data Upload page, Business Profile Settings page. All minimum requirements met.*

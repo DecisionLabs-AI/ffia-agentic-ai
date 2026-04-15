@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Step 3: LangChain + LangGraph imports
 from langchain_google_vertexai import ChatVertexAI
+from google.oauth2 import service_account
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
@@ -35,7 +36,13 @@ from agent.tools.postgres_tool import (
 from agent.tools.search_tool import search_tool
 from agent.tools.oil_price_tool import oil_price_tool
 from agent.tools.ingredient_price_tool import ingredient_price_tool
-from data.db import get_latest_invoice
+from agent.tools.business_rules_tool import (
+    platform_floor_guard_tool,
+    promo_profitability_tool,
+    cogs_alert_tool,
+    scenario_classifier_tool,
+)
+from data.db import get_latest_invoice, fetch_latest_restaurant_profile
 
 
 # Step 5: Load system prompt from file (kept in file, not hardcoded)
@@ -73,18 +80,37 @@ def _get_agent():
     """Return the LangGraph ReAct agent, constructing it once on first call."""
     global _agent_instance
     if _agent_instance is None:
-        # Step 7a: Build LLM — authenticated via GOOGLE_APPLICATION_CREDENTIALS (gcp-key.json)
+        # Step 7a: Build credentials — load from JSON string (Streamlit Cloud) or fall back to ADC
+        _creds_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+        _credentials = None
+        if _creds_json:
+            _creds_dict = json.loads(_creds_json)
+            _credentials = service_account.Credentials.from_service_account_info(
+                _creds_dict,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+        # Step 7b: Build LLM — gemini-2.5-flash, credentials injected at runtime
         llm = ChatVertexAI(
             model="gemini-2.5-flash",
             project=os.getenv("GCP_PROJECT_ID"),
-            location=os.getenv("GCP_LOCATION", "asia-southeast1"),
-            temperature=0.1,            # Deterministic output for data analysis
-            max_output_tokens=2048,
+            location="asia-southeast1",
+            credentials=_credentials,
+            temperature=0,
+            max_output_tokens=4096,
         )
         # Step 7b: Build agent graph (Thought/Action/Observation loop)
         _agent_instance = create_react_agent(
             model=llm,
-            tools=[postgres_tool, search_tool, oil_price_tool, ingredient_price_tool],
+            tools=[
+                postgres_tool,
+                search_tool,
+                oil_price_tool,
+                ingredient_price_tool,
+                platform_floor_guard_tool,
+                promo_profitability_tool,
+                cogs_alert_tool,
+                scenario_classifier_tool,
+            ],
             prompt=_load_system_prompt(),
         )
     return _agent_instance
@@ -115,6 +141,33 @@ def _should_inject_latest_invoice(user_message: str) -> bool:
     return bool(re.search(r"\binvoices?\b", user_message, flags=re.IGNORECASE))
 
 
+_PROFILE_QUESTION_PATTERN = re.compile(
+    r"(profile|โปรไฟล์"
+    r"|biggest.cost.risk|cost.risk"
+    r"|what.should.i.optim|ควรปรับ|ควรทำอะไร"
+    r"|based.on.my|จากโปรไฟล์"
+    r"|my.restaurant|ร้านของฉัน|ธุรกิจของฉัน"
+    r"|am.i.at.risk|เสี่ยงไหม"
+    r"|how.is.my.restaurant)",
+    re.IGNORECASE,
+)
+
+
+def _is_profile_question(user_message: str) -> bool:
+    """Return True when the question requires restaurant profile context."""
+    return bool(_PROFILE_QUESTION_PATTERN.search(user_message))
+
+
+def _build_profile_context_message(profile: dict) -> str:
+    """Format the restaurant profile as structured context for the agent."""
+    return (
+        "Restaurant profile loaded from PostgreSQL. Use these margin thresholds and "
+        "restaurant attributes as the anchor for all profile-based analysis. "
+        "Do NOT ask the user for this information — it is already here.\n\n"
+        f"{json.dumps(profile, ensure_ascii=False, indent=2, default=str)}"
+    )
+
+
 def _build_invoice_context_message(invoice: dict) -> str:
     """Format the latest saved invoice as structured context for the agent."""
     return (
@@ -131,6 +184,9 @@ def _build_agent_messages(
     latest_invoice: dict | None = None,
     invoice_context_requested: bool = False,
     invoice_context_error: str = "",
+    restaurant_profile: dict | None = None,
+    profile_context_requested: bool = False,
+    profile_context_error: str = "",
 ) -> list:
     """Convert UI chat history into LangChain message objects without duplicating the current turn."""
     history = list(chat_history or [])
@@ -173,6 +229,25 @@ def _build_agent_messages(
             content=(
                 "The user asked about an invoice, but no saved invoice was found in PostgreSQL. "
                 "Do not claim to have invoice data unless it is provided elsewhere in the conversation."
+            )
+        ))
+
+    # Step 8b: Inject restaurant profile context for profile-based questions
+    if restaurant_profile:
+        messages.append(SystemMessage(content=_build_profile_context_message(restaurant_profile)))
+    elif profile_context_error:
+        messages.append(SystemMessage(
+            content=(
+                "The user asked a profile-based question, but the restaurant profile could not "
+                f"be loaded from PostgreSQL: {profile_context_error}. Inform the user that their "
+                "profile could not be retrieved and ask them to check the Business Profile Settings."
+            )
+        ))
+    elif profile_context_requested:
+        messages.append(SystemMessage(
+            content=(
+                "The user asked a profile-based question, but no saved restaurant profile was "
+                "found in PostgreSQL. Ask the user to complete their Business Profile Settings first."
             )
         ))
 
@@ -248,13 +323,29 @@ def run_agent(
         except Exception as exc:
             invoice_context_error = str(exc)
 
-    # Step 10a: Invoke the LangGraph agent
+    # Step 10b: Pre-fetch restaurant profile for profile-based questions
+    restaurant_profile = None
+    profile_context_error = ""
+    profile_context_requested = _is_profile_question(user_message)
+    if profile_context_requested:
+        try:
+            if current_user_id:
+                restaurant_profile = fetch_latest_restaurant_profile(current_user_id)
+            else:
+                profile_context_error = "No authenticated user context was provided."
+        except Exception as exc:
+            profile_context_error = str(exc)
+
+    # Step 10c: Invoke the LangGraph agent
     agent_messages = _build_agent_messages(
         user_message,
         chat_history,
         latest_invoice,
         invoice_context_requested,
         invoice_context_error,
+        restaurant_profile,
+        profile_context_requested,
+        profile_context_error,
     )
     user_token = set_postgres_tool_user_id(current_user_id)
     try:
@@ -265,7 +356,7 @@ def run_agent(
     finally:
         reset_postgres_tool_user_id(user_token)
 
-    # Step 10b: Extract final answer — normalize Gemini's content block list to plain string
+    # Step 10d: Extract final answer — normalize Gemini's content block list to plain string
     messages = result.get("messages", [])
     output = ""
     for msg in reversed(messages):
@@ -273,7 +364,7 @@ def run_agent(
             output = _extract_text(msg.content)
             break
 
-    # Step 10c: Extract intermediate steps (tool calls + observations) for the UI trace
+    # Step 10e: Extract intermediate steps (tool calls + observations) for the UI trace
     # Also normalize ToolMessage content to plain string
     intermediate_steps = _extract_intermediate_steps(messages)
 
@@ -282,7 +373,7 @@ def run_agent(
 
 # Step 11: CLI test block — run without Streamlit for quick verification
 if __name__ == "__main__":
-    print("FFIA ReAct Agent — W2 CLI Test")
+    print("FFIA ReAct Agent — W4 CLI Test")
     print("Type your message (Ctrl+C to quit)\n")
 
     while True:

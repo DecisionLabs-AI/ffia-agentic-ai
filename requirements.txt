@@ -6,7 +6,7 @@
 # --- UI Framework ---
 streamlit>=1.45.0
 
-# --- LLM + Agent Framework (LangChain + LangGraph + Gemini via Vertex AI) ---
+# --- LLM + Agent Framework (LangChain + LangGraph + Gemini via Google AI API) ---
 langchain>=0.3.0
 langchain-google-vertexai>=2.0.0
 langchain-community>=0.3.0

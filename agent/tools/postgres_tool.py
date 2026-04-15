@@ -60,6 +60,61 @@ Tenant-scoped invoice tables (always filter by user_id):
    Prefer the ingredient_price_tool for ingredient lookups; use SQL only for
    aggregations or joins with invoice_items.
 
+4. platform_fee (global reference — no user_id filter needed)
+   Columns:
+   - platform    VARCHAR(50) PRIMARY KEY  -- e.g. "Grab", "Foodpanda", "LINE MAN"
+   - fee_percent DECIMAL(5,2)             -- commission percentage, e.g. 30.00
+   - is_default  BOOLEAN                  -- true for the default fallback platform
+   - updated_at  TIMESTAMP               -- last updated timestamp
+
+   Use: SELECT fee_percent / 100.0 AS gp_pct FROM platform_fee WHERE LOWER(platform) = LOWER('grab');
+   Note: No user_id column — this table is shared across all tenants.
+   Convert fee_percent to a fraction (divide by 100) before passing to business rule tools.
+   FALLBACK ONLY — query restaurant_channel_mix first; use platform_fee only if that returns 0 rows.
+
+5. restaurant_channel_mix (tenant-scoped — PRIMARY source for platform data)
+   Columns:
+   - id                SERIAL PRIMARY KEY
+   - user_id           TEXT          -- tenant identifier — ALWAYS filter with 'current_user_placeholder'
+   - platform          TEXT          -- e.g. "Grab Food", "LINE MAN", "Shopee Food", "Walk-in / Self-pickup"
+   - revenue_share_pct DECIMAL(5,2)  -- % of total revenue through this channel, e.g. 40.00
+   - platform_fee_pct  DECIMAL(5,2)  -- platform's commission fee %, e.g. 28.00
+   - is_active         BOOLEAN       -- only query WHERE is_active = true
+   - updated_at        TIMESTAMP
+
+   Use: SELECT platform, revenue_share_pct, platform_fee_pct
+        FROM restaurant_channel_mix
+        WHERE user_id = 'current_user_placeholder' AND is_active = true
+        ORDER BY revenue_share_pct DESC;
+   Note: This is the PRIMARY source for platform data. Query this before platform_fee.
+         If this returns 0 rows, fall back to platform_fee (global defaults).
+   For gp_pct lookup: SELECT platform_fee_pct / 100.0 AS gp_pct
+                      FROM restaurant_channel_mix
+                      WHERE user_id = 'current_user_placeholder'
+                        AND LOWER(platform) ILIKE '%<platform>%'
+                        AND is_active = true LIMIT 1;
+
+6. restaurant_profiles (tenant-scoped — filter by user_id)
+   Columns:
+   - id                  SERIAL PRIMARY KEY
+   - user_id             TEXT             -- tenant identifier — filter with 'current_user_placeholder'
+   - restaurant_name     TEXT
+   - business_type       TEXT             -- e.g. "ร้านอาหาร", "Cloud Kitchen"
+   - food_types          TEXT[]           -- cuisine types array, e.g. ["ไทย", "ข้าว"]
+   - store_type          TEXT             -- e.g. "ร้านนั่งกิน", "Delivery Only"
+   - seat_range          TEXT             -- e.g. "1-20", "21-50"
+   - currency            TEXT             -- e.g. "THB"
+   - target_margin_pct   NUMERIC          -- target gross margin as a whole number, e.g. 30.0 = 30%
+   - warning_margin_pct  NUMERIC          -- warning threshold, e.g. 20.0 = 20%
+   - risk_margin_pct     NUMERIC          -- critical/risk threshold, e.g. 15.0 = 15%
+   - is_active           BOOLEAN          -- only query WHERE is_active = true
+   - created_at          TIMESTAMP
+   - updated_at          TIMESTAMP
+
+   Use: SELECT * FROM restaurant_profiles
+        WHERE user_id = 'current_user_placeholder' AND is_active = true
+        ORDER BY updated_at DESC LIMIT 1;
+
 Query rules:
 - ALWAYS filter by user_id using the placeholder literal 'current_user_placeholder'
   for invoices and invoice_items. The tool replaces this with the real session user_id.
@@ -88,7 +143,7 @@ _FORBIDDEN_SQL_PATTERNS = [
     (re.compile(r"(?m)^\s*END\b", re.IGNORECASE), "END"),
     (re.compile(r"\bCALL\b", re.IGNORECASE), "CALL"),
 ]
-_INVOICE_TABLE_PATTERN = re.compile(r"\b(invoices|invoice_items)\b", re.IGNORECASE)
+_INVOICE_TABLE_PATTERN = re.compile(r"\b(invoices|invoice_items|restaurant_profiles)\b", re.IGNORECASE)
 
 
 def _strip_sql_comments_and_literals(sql: str) -> str:

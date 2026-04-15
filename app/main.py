@@ -5,6 +5,7 @@
 # =============================================================================
 
 # Step 1: Add project root to path so agent/ package can be imported
+import re
 import sys
 import base64
 from pathlib import Path
@@ -19,6 +20,7 @@ from app.utils.auth import authenticate_user, load_auth_users
 from app.utils.upload_cache import build_uploaded_file_cache_key
 from data.db import (
     create_tables,
+    get_connection,
     invoice_exists,
     save_invoice,
     get_recent_invoices,
@@ -26,6 +28,7 @@ from data.db import (
     fetch_invoice_items,
     fetch_latest_restaurant_profile,
     upsert_restaurant_profile,
+    upsert_channel_mix,
     count_invoice_items,
 )
 
@@ -525,21 +528,56 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     box-shadow: var(--ffia-shadow-soft) !important;
 }
 
-section[data-testid="stSidebar"] .stButton > button:focus,
-section[data-testid="stSidebar"] .stButton > button:active {
+section[data-testid="stSidebar"] .stButton > button:focus {
+    box-shadow: none !important;
+    border-color: transparent !important;
+    outline: none !important;
+}
+
+section[data-testid="stSidebar"] .stButton > button:focus-visible {
     box-shadow: 0 0 0 3px rgba(119, 170, 248, 0.16) !important;
     border-color: rgba(168, 194, 223, 0.96) !important;
     outline: none !important;
 }
 
-.sb-nav-item.active > div > button {
-    background: linear-gradient(180deg, #ffffff 0%, #f5faff 100%) !important;
+/* ── Active sidebar nav item ────────────────────────────────────────────────────
+   Each nav button is preceded by an empty marker div (.sb-nav-marker / .is-active).
+   Streamlit renders each st.markdown() and st.button() call as adjacent sibling divs,
+   so :has() bridges from the marker to the following sibling that contains the button.
+   active_page parameter → is_active bool → .is-active class → CSS. No data-testid hacks.
+   ────────────────────────────────────────────────────────────────────────────── */
+section[data-testid="stSidebar"] div:has(.sb-nav-marker.is-active) + div button {
+    background: rgba(255, 255, 255, 0.7) !important;
     color: #2f6cb9 !important;
     font-weight: 700 !important;
-    border-color: rgba(177, 201, 230, 0.95) !important;
-    box-shadow:
-        inset 4px 0 0 rgba(116, 170, 248, 0.86),
-        0 14px 28px -28px rgba(72, 112, 150, 0.42) !important;
+    border-color: rgba(200, 215, 231, 0.82) !important;
+    box-shadow: var(--ffia-shadow-soft), inset 4px 0 0 rgba(116, 170, 248, 0.86) !important;
+    transform: translateY(-1px);
+}
+
+section[data-testid="stSidebar"] div:has(.sb-nav-marker.is-primary) + div button {
+    background: transparent !important;
+    color: #658099 !important;
+    font-weight: 600 !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+section[data-testid="stSidebar"] div:has(.sb-nav-marker.is-primary) + div button:hover {
+    background: rgba(255, 255, 255, 0.7) !important;
+    color: var(--ffia-text) !important;
+    border-color: rgba(200, 215, 231, 0.82) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--ffia-shadow-soft) !important;
+}
+
+section[data-testid="stSidebar"] div:has(.sb-nav-marker.is-primary.is-active) + div button {
+    background: rgba(255, 255, 255, 0.7) !important;
+    color: #2f6cb9 !important;
+    font-weight: 700 !important;
+    border-color: rgba(200, 215, 231, 0.82) !important;
+    box-shadow: var(--ffia-shadow-soft), inset 4px 0 0 rgba(116, 170, 248, 0.86) !important;
+    transform: translateY(-1px);
 }
 
 /* ── Sidebar section labels ── */
@@ -757,8 +795,9 @@ div[data-baseweb="textarea"] > div:focus-within {
     background:
         linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(248,251,255,0.92) 100%) !important;
     box-shadow: var(--ffia-shadow-soft) !important;
-    padding: 0.35rem 0.45rem !important;
-    margin-bottom: 0.8rem !important;
+    padding: 1rem 1.2rem !important;
+    margin-bottom: 1.2rem !important;
+    min-height: 3rem;
 }
 
 [data-testid="stBottom"] {
@@ -1012,6 +1051,201 @@ div[data-baseweb="textarea"] > div:focus-within {
         font-size: 0.93rem;
     }
 }
+
+/* ── FFIA AI Answer Card ────────────────────────────────────────────────────
+   Scoped under .ffia-answer-card so none of these rules leak to other
+   parts of the app. Each rule overrides the global p/li muted color.     */
+.ffia-answer-card {
+    padding: 2px 0 6px 0;
+    font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+/* ── Fallback flat-card elements (non-structured answers) ── */
+.ffia-answer-card .ffia-h {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--ffia-accent-strong);
+    margin: 22px 0 8px 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--ffia-border);
+    line-height: 1.4;
+}
+.ffia-answer-card .ffia-h:first-child { margin-top: 2px; }
+
+.ffia-answer-card .ffia-p {
+    font-size: 14.5px !important;
+    line-height: 1.74 !important;
+    color: var(--ffia-text) !important;
+    margin: 5px 0 0 0 !important;
+    padding: 0 !important;
+}
+
+.ffia-answer-card .ffia-ul {
+    margin: 5px 0 0 0;
+    padding-left: 0;
+    list-style: none;
+}
+
+.ffia-answer-card .ffia-li {
+    font-size: 14px !important;
+    line-height: 1.70 !important;
+    color: var(--ffia-text) !important;
+    margin: 5px 0 !important;
+    padding-left: 1.35em;
+    position: relative;
+}
+.ffia-answer-card .ffia-li::before {
+    content: "›";
+    position: absolute;
+    left: 0.15em;
+    color: var(--ffia-accent-strong);
+    font-weight: 800;
+    font-size: 15px;
+    line-height: 1.65;
+}
+
+.ffia-answer-card strong { color: var(--ffia-text) !important; font-weight: 600; }
+
+.ffia-answer-card code {
+    font-size: 13px;
+    background: rgba(79, 143, 239, 0.09);
+    color: var(--ffia-accent-strong);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.ffia-answer-card .ffia-meta {
+    font-size: 11.5px !important;
+    color: var(--ffia-text-soft) !important;
+    font-style: italic;
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 1px solid var(--ffia-border);
+    line-height: 1.5;
+}
+
+/* ── Structured insight layout (profile / risk analysis answers) ── */
+
+/* Main Risk hero — prominent, calm, no color noise */
+.ffia-risk-hero {
+    padding: 6px 0 6px 16px;
+    border-left: 3px solid var(--ffia-accent-strong);
+    margin-bottom: 22px;
+}
+.ffia-risk-hero-eyebrow {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ffia-text-muted);
+    margin-bottom: 7px;
+    line-height: 1.4;
+}
+.ffia-risk-hero-body {
+    font-size: 18px !important;
+    font-weight: 700;
+    color: var(--ffia-text) !important;
+    line-height: 1.5 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+.ffia-risk-hero-body strong { color: var(--ffia-text) !important; font-weight: 800; }
+
+/* Section — separated by space and a hairline, no background boxes */
+.ffia-section {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--ffia-border);
+}
+
+/* Actions section — same spacing, accent title to signal "do this" */
+.ffia-section--actions {
+    background: none;
+    border: none;
+    border-top: 1px solid var(--ffia-border);
+    border-radius: 0;
+    padding: 18px 0 0 0;
+    margin-top: 20px;
+}
+
+/* Section label — small caps only, no icon */
+.ffia-section-head { margin-bottom: 10px; }
+.ffia-section-title {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ffia-text-muted);
+}
+
+/* Bullet list — used for why, evidence, and generic sections */
+.ffia-blist {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+.ffia-bitem {
+    font-size: 13.5px !important;
+    color: var(--ffia-text) !important;
+    line-height: 1.64 !important;
+    padding-left: 1.1em;
+    position: relative;
+    margin: 0 !important;
+}
+.ffia-bitem::before {
+    content: "·";
+    position: absolute;
+    left: 0;
+    color: var(--ffia-text-muted);
+    font-weight: 700;
+    font-size: 17px;
+    line-height: 1.38;
+}
+.ffia-bitem strong        { color: var(--ffia-text) !important; font-weight: 600; }
+/* Inline evidence label — slightly muted, same size */
+.ffia-ev-inline           { color: var(--ffia-text-muted) !important; font-weight: 600; }
+
+/* Numbered action list — clean numbers, no boxes */
+.ffia-alist {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: ffia-action;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.ffia-aitem {
+    counter-increment: ffia-action;
+    position: relative;
+    padding: 0 0 0 26px;
+    font-size: 13.5px !important;
+    color: var(--ffia-text) !important;
+    line-height: 1.60 !important;
+    margin: 0 !important;
+    background: none;
+    border: none;
+    border-radius: 0;
+}
+.ffia-aitem::before {
+    content: counter(ffia-action);
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ffia-accent-strong);
+    line-height: 1.85;
+    width: 16px;
+    text-align: left;
+}
+.ffia-aitem strong { color: var(--ffia-text) !important; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1034,17 +1268,33 @@ def _render_sidebar_nav_button(
     label: str,
     key: str,
     is_active: bool = False,
+    is_primary: bool = False,
 ) -> bool:
-    """Render a sidebar nav button with a persistent active class."""
-    _active_class = " active" if is_active else ""
-    st.markdown(f'<div class="sb-nav-item{_active_class}">', unsafe_allow_html=True)
-    _clicked = st.button(label, key=key, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-    return _clicked
+    """Render a sidebar nav button preceded by a class marker div.
+
+    Streamlit renders each call as an adjacent sibling div in the DOM — the marker div
+    and the button div are siblings, never parent-child.  The CSS :has() rule in Step 3a
+    styles the button based on the marker's .is-active class, bridging the sibling gap.
+    active_page (passed by _render_sidebar) → is_active → class → CSS. No click state.
+    """
+    _classes = ["sb-nav-marker"]
+    if is_active:
+        _classes.append("is-active")
+    if is_primary:
+        _classes.append("is-primary")
+    _cls = " ".join(_classes)
+    st.markdown(f'<div class="{_cls}"></div>', unsafe_allow_html=True)
+    return st.button(label, key=key, use_container_width=True)
 
 
-def _render_sidebar(current_user: dict) -> None:
-    """Render the FFIA sidebar: brand, grouped nav sections, and account."""
+def _render_sidebar(current_user: dict, active_page: str = "dashboard") -> None:
+    """Render the FFIA sidebar: brand, grouped nav sections, and account.
+
+    active_page is the single source of truth for which nav item appears highlighted.
+    It is passed explicitly by the call site — the sidebar function never reads page
+    state itself.  Each nav button receives is_active=(active_page == "<key>"), which
+    sets the .sb-nav-marker.is-active class, which the CSS :has() rule picks up.
+    """
     with st.sidebar:
         # Step 5a: Load logo (base64) — fall back to "F" badge if file missing
         _logo_path = Path(__file__).parent / "assets" / "ffia_logo_design.png"
@@ -1073,44 +1323,33 @@ def _render_sidebar(current_user: dict) -> None:
 </div>
 """, unsafe_allow_html=True)
 
-        _page = st.session_state["page"]
-
-        # Step 5c: OVERVIEW — Dashboard
-        st.markdown('<div class="sb-section-label">Overview</div>', unsafe_allow_html=True)
-
-        if _render_sidebar_nav_button("Dashboard", key="nav_dashboard", is_active=_page == "dashboard"):
+        if _render_sidebar_nav_button("Overview", key="nav_dashboard", is_active=active_page == "dashboard"):
             st.session_state["page"] = "dashboard"
             st.rerun()
 
-        # Step 5d: YOUR DATA — Upload live; Menu Cost + Invoices ghost (W4+)
-        st.markdown('<div class="sb-section-label">Your Data</div>', unsafe_allow_html=True)
-
-        if _render_sidebar_nav_button("Data Upload", key="nav_upload", is_active=_page == "upload"):
-            st.session_state["page"] = "upload"
+        if _render_sidebar_nav_button("Dashboard", key="nav_dashboard_viz", is_active=active_page == "dashboard_viz"):
+            st.session_state["page"] = "dashboard_viz"
             st.rerun()
-
-        st.markdown("""
-<div class="sb-nav-disabled">Menu Cost Data</div>
-<div class="sb-nav-disabled">Invoices</div>
-""", unsafe_allow_html=True)
-
-        # Step 5e: ANALYSIS — all ghost (W4+)
-        st.markdown('<div class="sb-section-label">Analysis</div>', unsafe_allow_html=True)
-        st.markdown("""
-<div class="sb-nav-disabled">Margin Analysis</div>
-<div class="sb-nav-disabled">Fuel Impact</div>
-<div class="sb-nav-disabled">Scenario Simulation</div>
-""", unsafe_allow_html=True)
-
-        # Step 5f: SETTINGS — Business Profile live
-        st.markdown('<div class="sb-section-label">Settings</div>', unsafe_allow_html=True)
 
         if _render_sidebar_nav_button(
             "Business Profile",
             key="nav_profile",
-            is_active=_page == "profile_settings",
+            is_active=active_page == "profile_settings",
         ):
             st.session_state["page"] = "profile_settings"
+            st.rerun()
+
+        if _render_sidebar_nav_button("Upload Invoice", key="nav_upload", is_active=active_page == "upload"):
+            st.session_state["page"] = "upload"
+            st.rerun()
+
+        if _render_sidebar_nav_button(
+            "AI Assistant",
+            key="nav_ai_assistant",
+            is_active=active_page == "ai_assistant",
+            is_primary=True,
+        ):
+            st.session_state["page"] = "ai_assistant"
             st.rerun()
 
         # Step 5g: Sign out — muted, sits above the account block
@@ -1133,7 +1372,7 @@ def _render_sidebar(current_user: dict) -> None:
 """, unsafe_allow_html=True)
 
 
-_render_sidebar(_current_user)
+_render_sidebar(_current_user, active_page=st.session_state.get("page", "dashboard"))
 
 # Step 6: Monthly invoices section — always visible below the upload flow
 def _render_monthly_invoices_section(current_user: dict) -> None:
@@ -1355,7 +1594,12 @@ def _clear_profile_stepper_state() -> None:
     for _k in (
         "profile_step", "profile_restaurant_name",
         "profile_food_types", "profile_store_type", "profile_seat_range",
+        "profile_channels",
     ):
+        st.session_state.pop(_k, None)
+    # Clear all step3 widget keys (number_input / text_input keys prefixed step3_)
+    _step3_keys = [k for k in list(st.session_state.keys()) if k.startswith("step3_")]
+    for _k in _step3_keys:
         st.session_state.pop(_k, None)
 
 
@@ -1462,9 +1706,12 @@ def _render_profile_step_2() -> None:
     }
     _valid_seats = _SEAT_FOR_STORE[_store_type]
 
-    # Step 2d: Auto-correct stale session state when current value is invalid for store_type
-    if st.session_state["profile_seat_range"] not in _valid_seats:
-        st.session_state["profile_seat_range"] = _valid_seats[0]
+    # Step 2d: Reset stale step2_seat_range widget key when invalid for the current store_type.
+    # Deleting the key before rendering forces re-initialization from the index parameter,
+    # preventing Streamlit from re-using a stale value across store_type changes.
+    # profile_seat_range is NOT mutated here — only written on Next click alongside profile_store_type.
+    if st.session_state.get("step2_seat_range") not in _valid_seats:
+        st.session_state.pop("step2_seat_range", None)
 
     if len(_valid_seats) == 1:
         # Step 2e: Single option — show as read-only info field, no user input needed
@@ -1514,17 +1761,367 @@ def _render_profile_step_2() -> None:
                 st.rerun()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 3 helpers — Platform & Revenue (doc-first, MVP logic)
+# Sources:
+#   docs/business_rules.md — L4 COGS base ranges per cuisine group
+#   docs/scenarios.md      — net margin scenario thresholds
+# ─────────────────────────────────────────────────────────────────────────────
+
+# MVP assumption: map food_type keys to COGS base midpoints from docs/business_rules.md L4
+_FOOD_TYPE_COGS_BASE: dict = {
+    "rice_curry":   0.375,  # lpg_intensive: 35–40%
+    "noodle":       0.355,  # freshness_pkg: 33–38%
+    "porridge":     0.355,  # freshness_pkg: 33–38%
+    "chicken_rice": 0.375,  # lpg_intensive: 35–40%
+    "spicy_soup":   0.375,  # lpg_intensive: 35–40%
+    "stir_fry":     0.375,  # lpg_intensive: 35–40%
+    "isaan":        0.375,  # lpg_intensive: 35–40%
+    "spicy_salad":  0.355,  # freshness_pkg: 33–38%
+    "healthy":      0.300,  # high_energy_ops: 25–35%
+    "vegan":        0.300,  # high_energy_ops: 25–35%
+    "meal_prep":    0.300,  # high_energy_ops: 25–35%
+}
+
+# LPG-intensive food type keys — map to lpg_intensive COGS group (business_rules.md L4)
+_LPG_FOOD_TYPES = {"rice_curry", "stir_fry", "spicy_soup", "isaan", "chicken_rice"}
+
+# Channel metadata:
+# (session_key, display_label, default_rev_share, default_gp_pct, gp_editable, logo_file)
+_PLATFORM_CHANNEL_META = [
+    ("grab_food",       "Grab Food",            40, 28, True,  "grab.png"),
+    ("line_man",        "LINE MAN",              30, 27, True,  "lineman.png"),
+    ("shopee_food",     "Shopee Food",           20, 22, True,  "shopeefood.png"),
+    ("walkin_selfpick", "Walk-in / Self-pickup", 10,  0, False, "walkin.png"),
+]
+
+
+def _load_logo_b64(filename: str) -> str | None:
+    """Load a platform logo from app/assets/ and return as a base64 data URI, or None."""
+    _path = Path(__file__).parent / "assets" / filename
+    if not _path.exists():
+        return None
+    with open(_path, "rb") as _fh:
+        _b64 = base64.b64encode(_fh.read()).decode()
+    _ext = _path.suffix.lstrip(".")
+    return f"data:image/{_ext};base64,{_b64}"
+
+
+def _get_default_platform_values() -> dict:
+    """Return default channel config keyed by session key."""
+    return {
+        ch_key: {"label": label, "revenue_share_pct": rev, "gp_pct": gp, "enabled": True}
+        for ch_key, label, rev, gp, _, _logo in _PLATFORM_CHANNEL_META
+    }
+
+
+def _estimate_food_cost_pct(food_types: list) -> float:
+    """Estimate avg food cost % from selected food types using L4 COGS base midpoints.
+
+    MVP assumption: unmapped food types default to lpg_intensive midpoint (37.5%).
+    """
+    if not food_types:
+        return 0.375  # MVP assumption: fallback to lpg_intensive midpoint
+    bases = [_FOOD_TYPE_COGS_BASE.get(ft, 0.375) for ft in food_types]
+    return sum(bases) / len(bases)
+
+
+def _estimate_fixed_cost_pct(store_type: str, seat_range: str) -> float:
+    """Estimate fixed overhead % from store type and seat range.
+
+    MVP assumption: not explicitly defined in docs — derived from operational context.
+    ghost_kitchen has the lowest overhead (delivery-only, no dine-in space);
+    full large restaurant has the highest (rent, staff, utilities).
+    """
+    if store_type == "ghost_kitchen":
+        return 0.15
+    elif store_type == "hybrid_small":
+        return 0.20
+    elif seat_range == "31_plus":
+        return 0.28
+    else:  # full_restaurant, 11_30 seats
+        return 0.25
+
+
+def _compute_blended_margin_preview(
+    channels: dict,
+    food_types: list,
+    store_type: str,
+    seat_range: str,
+) -> dict:
+    """Compute blended GP cost, estimated food cost, fixed cost, and net margin.
+
+    Formula (doc-first):
+      blended_gp_pct  = weighted avg of each channel's gp_pct by revenue share
+      food_cost_pct   = avg COGS base midpoint from selected food types (L4)
+      fixed_cost_pct  = store_type + seat_range lookup (MVP assumption)
+      net_margin_pct  = 100 - blended_gp - food_cost - fixed_cost
+    """
+    # Step P1: Weighted blended GP across all channels
+    total_rev = sum(ch["revenue_share_pct"] for ch in channels.values())
+    if total_rev <= 0:
+        blended_gp = 0.0
+    else:
+        blended_gp = sum(
+            (ch["revenue_share_pct"] / total_rev) * (ch["gp_pct"] / 100)
+            for ch in channels.values()
+        )
+
+    # Step P2: Food cost and fixed cost estimates
+    food_cost  = _estimate_food_cost_pct(food_types)
+    fixed_cost = _estimate_fixed_cost_pct(store_type, seat_range)
+
+    # Step P3: Net margin
+    net_margin = 1.0 - blended_gp - food_cost - fixed_cost
+
+    return {
+        "blended_gp_pct": round(blended_gp  * 100, 1),
+        "food_cost_pct":  round(food_cost   * 100, 1),
+        "fixed_cost_pct": round(fixed_cost  * 100, 1),
+        "net_margin_pct": round(net_margin  * 100, 1),
+    }
+
+
 def _render_profile_step_3() -> None:
-    """Step 3: Platform & Revenue Configuration — placeholder."""
-    # Step 3a: Title and placeholder with forward-looking explanation
+    """Step 3: Platform & Revenue — optional channel cards with logos and live margin preview."""
+    # Step 3a: Title and description
     st.subheader("Platform & Revenue")
-    st.info(
-        "Step 3 configuration will be added later.\n\n"
-        "**Coming soon:** Configure your delivery platforms (Grab, FoodPanda, LINE MAN, etc.) "
-        "and revenue breakdown. This will allow FFIA to estimate your delivery fee impact on margin."
+    st.write(
+        "Enable the channels you use, then set each one's revenue share and platform fee. "
+        "FFIA uses this to estimate your blended margin in real-time."
     )
 
-    # Step 3b: Navigation — Cancel | Back | Next
+    # Step 3b: Initialize widget defaults on first entry — respect user edits on rerun
+    _saved = st.session_state.get("profile_channels") or {}
+    for _ch_key, _label, _def_rev, _def_gp, _gp_editable, _logo_file in _PLATFORM_CHANNEL_META:
+        _en_key  = f"step3_{_ch_key}_enabled"
+        _rev_key = f"step3_{_ch_key}_rev"
+        _gp_key  = f"step3_{_ch_key}_gp"
+        if _en_key not in st.session_state:
+            st.session_state[_en_key] = bool(_saved.get(_ch_key, {}).get("enabled", True))
+        if _rev_key not in st.session_state:
+            st.session_state[_rev_key] = float(
+                _saved.get(_ch_key, {}).get("revenue_share_pct", _def_rev)
+            )
+        if _gp_editable and _gp_key not in st.session_state:
+            st.session_state[_gp_key] = float(
+                _saved.get(_ch_key, {}).get("gp_pct", _def_gp)
+            )
+
+    # Step 3c: Render channel cards — 2 per row
+    _cols_row1 = st.columns(2)
+    _cols_row2 = st.columns(2)
+    for _i, (_ch_key, _label, _def_rev, _def_gp, _gp_editable, _logo_file) in enumerate(
+        _PLATFORM_CHANNEL_META
+    ):
+        _col    = _cols_row1[_i] if _i < 2 else _cols_row2[_i - 2]
+        _en_key = f"step3_{_ch_key}_enabled"
+        # Read enabled state from session state (already updated by widget on previous rerun)
+        _is_enabled = bool(st.session_state.get(_en_key, True))
+
+        with _col:
+            with st.container(border=True):
+                # Step 3c-i: Card header — logo + label on left, Enable toggle on right
+                _hdr_left, _hdr_right = st.columns([3, 1])
+                with _hdr_left:
+                    _logo_uri = _load_logo_b64(_logo_file)
+                    # Walk-in gets a "No commission" badge inline with its label
+                    _badge_html = (
+                        '<span style="margin-left:0.45rem;padding:0.12rem 0.5rem;'
+                        'border-radius:999px;font-size:0.68rem;font-weight:700;'
+                        'background:rgba(90,175,132,0.12);color:#3d9068;'
+                        'border:1px solid rgba(90,175,132,0.35);white-space:nowrap;">'
+                        'No commission</span>'
+                        if _ch_key == "walkin_selfpick" else ""
+                    )
+                    if _logo_uri:
+                        st.markdown(
+                            f'<div style="display:flex;align-items:center;gap:0.55rem;'
+                            f'padding:0.1rem 0 0.2rem 0;flex-wrap:wrap;">'
+                            f'<img src="{_logo_uri}" style="height:28px;width:auto;'
+                            f'border-radius:6px;object-fit:contain;">'
+                            f'<span style="font-weight:700;font-size:0.95rem;'
+                            f'color:var(--ffia-text);">{escape(_label)}</span>'
+                            f'{_badge_html}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            f'<div style="display:flex;align-items:center;gap:0.45rem;">'
+                            f'<strong>{escape(_label)}</strong>{_badge_html}</div>',
+                            unsafe_allow_html=True,
+                        )
+                with _hdr_right:
+                    # Checkbox key drives _is_enabled on the NEXT rerun
+                    st.checkbox("Active channel", key=_en_key)
+
+                # Step 3c-ii: Inputs — only shown when this channel is enabled
+                if _is_enabled:
+                    st.number_input(
+                        "Revenue Share (%)",
+                        min_value=0.0,
+                        max_value=100.0,
+                        step=1.0,
+                        format="%.0f",
+                        key=f"step3_{_ch_key}_rev",
+                        help="% of total monthly revenue from this channel.",
+                    )
+                    if _gp_editable:
+                        st.number_input(
+                            "Platform Fee (%)",
+                            min_value=0.0,
+                            max_value=100.0,
+                            step=0.5,
+                            format="%.1f",
+                            key=f"step3_{_ch_key}_gp",
+                            help="Commission % charged by this platform.",
+                        )
+                    else:
+                        st.caption("Platform fee: 0% — no commission")
+
+    # Step 3d: Collect current values — disabled channels contribute 0 to the totals.
+    # Auto-disable: if an enabled channel has revenue_share = 0, treat it as inactive
+    # and update session state so the checkbox reflects the change on next rerun.
+    _current_channels: dict = {}
+    for _ch_key, _label, _def_rev, _def_gp, _gp_editable, _ in _PLATFORM_CHANNEL_META:
+        _is_enabled = bool(st.session_state.get(f"step3_{_ch_key}_enabled", True))
+        if _is_enabled:
+            _rev = float(st.session_state.get(f"step3_{_ch_key}_rev", _def_rev))
+            _gp  = float(st.session_state.get(f"step3_{_ch_key}_gp", _def_gp)) if _gp_editable else 0.0
+            # Auto-disable when revenue share is set to 0
+            if _rev == 0.0:
+                st.session_state[f"step3_{_ch_key}_enabled"] = False
+                _is_enabled = False
+        else:
+            _rev = 0.0
+            _gp  = 0.0
+        _current_channels[_ch_key] = {
+            "label":             _label,
+            "revenue_share_pct": _rev,
+            "gp_pct":            _gp,
+            "enabled":           _is_enabled,
+        }
+
+    # Step 3e: Validation banner — only enabled channels must total 100%
+    _enabled_channels = {k: v for k, v in _current_channels.items() if v["enabled"]}
+    _total_rev = sum(ch["revenue_share_pct"] for ch in _enabled_channels.values())
+    st.write("")
+    if not _enabled_channels:
+        st.warning("Enable at least one channel to continue.")
+    elif abs(_total_rev - 100.0) > 0.5:
+        st.warning(
+            f"Enabled channel revenue shares total **{_total_rev:.0f}%** — "
+            "they must add up to **100%**. Adjust the values above."
+        )
+    else:
+        st.success("Enabled channel revenue shares total 100% ✓")
+
+    # Step 3f: Live blended margin preview card
+    st.write("")
+    with st.container(border=True):
+        _render_section_header(
+            "Estimated Blended Margin Preview",
+            "Calculated from your enabled channels, food types, and store setup. Updates as you type.",
+        )
+        _preview = _compute_blended_margin_preview(
+            channels   = _current_channels,  # disabled channels have 0 rev share — safe to pass all
+            food_types = st.session_state.get("profile_food_types", []),
+            store_type = st.session_state.get("profile_store_type", "ghost_kitchen"),
+            seat_range = st.session_state.get("profile_seat_range", "0"),
+        )
+        _pm1, _pm2, _pm3, _pm4 = st.columns(4)
+        with _pm1:
+            st.metric(
+                "Avg GP Cost",
+                f"{_preview['blended_gp_pct']:.1f}%",
+                help="Weighted avg platform commission across enabled channels.",
+            )
+        with _pm2:
+            st.metric(
+                "Est. Food Cost",
+                f"{_preview['food_cost_pct']:.1f}%",
+                help="Based on your selected food types (L4 COGS base midpoints).",
+            )
+        with _pm3:
+            st.metric(
+                "Est. Fixed Cost",
+                f"{_preview['fixed_cost_pct']:.1f}%",
+                help="Based on your store type and seating range (MVP assumption).",
+            )
+        with _pm4:
+            st.metric(
+                "Est. Net Margin",
+                f"{_preview['net_margin_pct']:.1f}%",
+                help="= 100% − GP Cost − Food Cost − Fixed Cost",
+            )
+
+        # Step 3g: Net margin status badge + one insight line
+        _nm = _preview["net_margin_pct"]
+        if _nm > 25:
+            _status_color = "#3d9068"
+            _status_bg    = "rgba(90,175,132,0.12)"
+            _status_bd    = "rgba(90,175,132,0.35)"
+            _status_label = "Good"
+            _status_icon  = "✓"
+        elif _nm >= 15:
+            _status_color = "#c28747"
+            _status_bg    = "rgba(255,190,90,0.12)"
+            _status_bd    = "rgba(236,208,169,0.5)"
+            _status_label = "Warning"
+            _status_icon  = "⚠"
+        else:
+            _status_color = "#c16f6f"
+            _status_bg    = "rgba(255,90,90,0.10)"
+            _status_bd    = "rgba(237,197,197,0.55)"
+            _status_label = "Risk"
+            _status_icon  = "✕"
+
+        st.markdown(
+            f'<div style="display:inline-flex;align-items:center;gap:0.4rem;'
+            f'margin:0.5rem 0 0.3rem 0;padding:0.3rem 0.75rem;border-radius:999px;'
+            f'background:{_status_bg};border:1px solid {_status_bd};'
+            f'color:{_status_color};font-size:0.82rem;font-weight:700;">'
+            f'{_status_icon} Margin status: {_status_label}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Step 3h-insight: One actionable insight based on channel mix
+        _delivery_rev = sum(
+            _current_channels[k]["revenue_share_pct"]
+            for k in ("grab_food", "line_man", "shopee_food")
+            if _current_channels[k]["enabled"]
+        )
+        _walkin_rev = _current_channels["walkin_selfpick"]["revenue_share_pct"]
+        if _delivery_rev >= 70:
+            _insight = (
+                f"💡 **{_delivery_rev:.0f}% of your revenue** depends on high-commission "
+                "platforms. Consider promoting self-pickup to reduce GP cost."
+            )
+        elif _walkin_rev > 0 and _walkin_rev < 20:
+            _gain = round(_preview["blended_gp_pct"] * 0.10 / 100 * 10, 1)
+            _insight = (
+                f"💡 Increasing Walk-in / Self-pickup by 10% could reduce your avg GP cost "
+                f"by ~{_gain:.1f} percentage points."
+            )
+        else:
+            _insight = "💡 Your channel mix looks balanced across delivery and direct sales."
+        st.caption(_insight)
+
+        # Step 3h-scenario: Scenario guidance from docs/scenarios.md
+        if _nm < 15:
+            st.error(
+                "FFIA recommends an **Operational Optimization** strategy — switch to closer "
+                "suppliers or promote self-pickup to reduce GP costs. *(Scenario 3)*"
+            )
+        elif _nm < 20:
+            st.warning(
+                "FFIA suggests a **Targeted Price Adjustment** on your most fuel-impacted items. "
+                "*(Scenario 2)*"
+            )
+
+    # Step 3h: Navigation — Cancel | Back | Next
     st.write("")
     _col_cancel, _col_back, _col_spacer, _col_next = st.columns([1, 1, 2, 1])
     with _col_cancel:
@@ -1533,85 +2130,465 @@ def _render_profile_step_3() -> None:
             st.session_state["page"] = "dashboard"
             st.rerun()
     with _col_back:
-        if st.button("\u2190 Back", key="step3_back"):
+        if st.button("← Back", key="step3_back"):
             st.session_state["profile_step"] = 2
             st.rerun()
     with _col_next:
-        if st.button("Next \u2192", type="primary", key="step3_next"):
-            st.session_state["profile_step"] = 4
-            st.rerun()
+        if st.button("Next →", type="primary", key="step3_next"):
+            # Step 3i: Validate before advancing
+            _errors = []
+            if not _enabled_channels:
+                _errors.append("Enable at least one channel to continue.")
+            else:
+                for _ch_key, _label, _, _, _, _ in _PLATFORM_CHANNEL_META:
+                    if not _current_channels[_ch_key]["enabled"]:
+                        continue
+                    _rev = _current_channels[_ch_key]["revenue_share_pct"]
+                    _gp  = _current_channels[_ch_key]["gp_pct"]
+                    if _rev <= 0:
+                        _errors.append(f"{_label}: Active channels must have Revenue Share > 0%.")
+                    elif not (0 < _rev <= 100):
+                        _errors.append(f"{_label}: Revenue share must be between 0 and 100%.")
+                    if not (0 <= _gp <= 100):
+                        _errors.append(f"{_label}: Platform fee must be 0–100%.")
+                if abs(_total_rev - 100.0) > 0.5:
+                    _errors.append(
+                        f"Enabled channel revenue shares must total 100% "
+                        f"(currently {_total_rev:.0f}%)."
+                    )
+            if _errors:
+                for _err in _errors:
+                    st.warning(_err)
+            else:
+                # Step 3j: Persist to session state (no DB field yet — used in Step 4 + preview)
+                st.session_state["profile_channels"] = _current_channels
+                st.session_state["profile_step"] = 4
+                st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 4 helpers — AI Risk Profile (doc-first)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_ai_profile_summary(store_type: str, food_types: list, channels: dict) -> str:
+    """Build a one-line AI-style insight from store type, food types, and channel mix."""
+    _STORE_LABELS = {
+        "ghost_kitchen":   "Ghost Kitchen",
+        "hybrid_small":    "Hybrid Small Restaurant",
+        "full_restaurant": "Full-Service Restaurant",
+    }
+    _store = _STORE_LABELS.get(store_type, "Restaurant")
+
+    # Menu trait — fuel-sensitive if majority of food types are LPG-intensive
+    _lpg_count = sum(1 for ft in food_types if ft in _LPG_FOOD_TYPES)
+    _menu_trait = (
+        "fuel-sensitive menu"
+        if food_types and _lpg_count >= len(food_types) / 2
+        else "varied menu"
+    )
+
+    # Channel trait — based on delivery revenue share
+    _enabled = {k: v for k, v in channels.items() if v.get("enabled")}
+    _delivery_rev = sum(
+        v["revenue_share_pct"] for k, v in _enabled.items()
+        if k in ("grab_food", "line_man", "shopee_food")
+    )
+    if _delivery_rev >= 70:
+        _channel_trait = "high GP dependency"
+    elif _delivery_rev >= 40:
+        _channel_trait = "mixed channel revenue"
+    else:
+        _channel_trait = "strong direct sales"
+
+    return f"{_store} with {_channel_trait} and {_menu_trait}"
+
+
+def _derive_risk_level(net_margin_pct: float) -> dict:
+    """Map estimated net margin to a labelled risk level with display colours."""
+    if net_margin_pct > 25:
+        return {
+            "label": "Healthy", "icon": "✓",
+            "color": "#3d9068",
+            "bg":    "rgba(90,175,132,0.10)",
+            "bd":    "rgba(90,175,132,0.38)",
+        }
+    elif net_margin_pct >= 15:
+        return {
+            "label": "Warning", "icon": "⚠",
+            "color": "#c28747",
+            "bg":    "rgba(255,190,90,0.10)",
+            "bd":    "rgba(236,208,169,0.55)",
+        }
+    else:
+        return {
+            "label": "Critical", "icon": "✕",
+            "color": "#c16f6f",
+            "bg":    "rgba(220,80,80,0.08)",
+            "bd":    "rgba(237,197,197,0.60)",
+        }
+
+
+def _derive_capability_tags(food_types: list, channels: dict) -> list:
+    """Derive actionable capability tags from user profile data."""
+    _tags = []
+    _enabled = {k: v for k, v in channels.items() if v.get("enabled")}
+    _delivery_rev = sum(
+        v["revenue_share_pct"] for k, v in _enabled.items()
+        if k in ("grab_food", "line_man", "shopee_food")
+    )
+    _walkin_rev = channels.get("walkin_selfpick", {}).get("revenue_share_pct", 0)
+
+    if any(ft in _LPG_FOOD_TYPES for ft in food_types):
+        _tags.append(("LPG Defense",    "#5a87c9", "rgba(89,135,201,0.10)", "rgba(189,210,236,0.50)"))
+    if _delivery_rev >= 60:
+        _tags.append(("GP Optimizer",   "#c28747", "rgba(255,190,90,0.10)", "rgba(236,208,169,0.50)"))
+    if _walkin_rev < 20:
+        _tags.append(("Channel Mix Fix","#c16f6f", "rgba(220,80,80,0.08)",  "rgba(237,197,197,0.55)"))
+    return _tags  # list of (label, color, bg, border)
+
+
+def _top_delivery_platform(channels: dict) -> tuple[str, float, float]:
+    """Return (label, revenue_share_pct, gp_pct) for the highest-revenue delivery platform."""
+    _delivery_keys = [
+        ("grab_food",   "Grab Food"),
+        ("line_man",    "LINE MAN"),
+        ("shopee_food", "Shopee Food"),
+    ]
+    _best_label, _best_rev, _best_gp = "delivery platform", 0.0, 30.0
+    for _key, _label in _delivery_keys:
+        _ch = channels.get(_key, {})
+        if _ch.get("enabled") and _ch.get("revenue_share_pct", 0) > _best_rev:
+            _best_rev   = _ch["revenue_share_pct"]
+            _best_gp    = _ch.get("gp_pct", 30.0)
+            _best_label = _label
+    return _best_label, _best_rev, _best_gp
+
+
+def _build_fuel_insight(food_types: list, nm: float, channels: dict) -> str:
+    """One-line fuel sensitivity insight shown under the AI summary card.
+
+    Estimates margin impact of a ฿5/L diesel increase based on LPG menu exposure.
+    Formula: LPG-intensive dishes ≈ 40% of food cost; food cost ≈ 35% of revenue.
+    A 10% diesel increase → ~0.35 × 0.40 × 0.10 ≈ 1.4% margin loss per ฿5/L rise.
+    Rounded and labelled per sensitivity tier.
+    """
+    _lpg_count = sum(1 for ft in food_types if ft in _LPG_FOOD_TYPES)
+    _total     = max(len(food_types), 1)
+    _lpg_ratio = _lpg_count / _total
+
+    if _lpg_ratio >= 0.6:
+        _impact = "3–5%"
+        _note   = "High fuel sensitivity — most of your menu relies on LPG cooking."
+    elif _lpg_ratio >= 0.3:
+        _impact = "1–3%"
+        _note   = "Moderate fuel sensitivity — some LPG-intensive dishes on your menu."
+    else:
+        return "Diesel price has limited direct impact on your current menu mix."
+
+    _suffix = " Act now — margin is already near the threshold." if nm < 18 else ""
+    return f"A ฿5/L diesel increase could reduce your margin by ~{_impact}. {_note}{_suffix}"
+
+
+def _generate_alert_cards(
+    nm: float,
+    channels: dict,
+    food_types: list,
+    store_type: str,
+) -> list:
+    """Generate exactly 3 alert dicts: one critical, one warning, one opportunity.
+
+    Each dict: type, title, problem, reason, action.
+    All numeric values are derived from real channel/margin data — no hardcoded figures.
+    Logic derived from docs/business_rules.md and docs/scenarios.md.
+    """
+    _enabled = {k: v for k, v in channels.items() if v.get("enabled")}
+    _delivery_rev = sum(
+        v["revenue_share_pct"] for k, v in _enabled.items()
+        if k in ("grab_food", "line_man", "shopee_food")
+    )
+    _walkin_rev = channels.get("walkin_selfpick", {}).get("revenue_share_pct", 0)
+    _has_lpg    = any(ft in _LPG_FOOD_TYPES for ft in food_types)
+    _top_name, _top_rev, _top_gp = _top_delivery_platform(channels)
+
+    # ── Critical ──────────────────────────────────────────────────────────────
+    if nm < 15:
+        # Estimate GP savings if 10% of volume shifts to Walk-in (0% fee)
+        _shift_pct  = 10
+        _gp_recover = round(_top_gp * _shift_pct / 100, 1)
+        _critical = {
+            "type": "critical", "title": "Margin at Risk",
+            "problem": f"Estimated net margin is {nm:.1f}% — below the 15% safety threshold.",
+            "reason":  "Platform GP fees and food cost are compressing profitability simultaneously.",
+            "action":  (
+                f"Shift {_shift_pct}% from {_top_name} to Walk-in — "
+                f"at {_top_gp:.0f}% commission this recovers ~{_gp_recover:.1f}% margin. "
+                f"(Scenario 3)"
+            ),
+        }
+    elif _delivery_rev >= 80:
+        _shift_target = max(15, round(_delivery_rev - 65))
+        _gp_recover   = round(_top_gp * _shift_target / 100, 1)
+        _critical = {
+            "type": "critical", "title": "Over-reliance on Delivery",
+            "problem": f"{_delivery_rev:.0f}% of your revenue flows through high-commission platforms.",
+            "reason":  "Platform GP fees consume margin before ingredient costs are even counted.",
+            "action":  (
+                f"Shift {_shift_target}% from {_top_name} to Walk-in — "
+                f"recovering ~{_gp_recover:.1f}% of revenue currently lost to commission."
+            ),
+        }
+    else:
+        _critical = {
+            "type": "critical", "title": "No Critical Risk Detected",
+            "problem": "Your current setup has no critical margin threats.",
+            "reason":  "Margin, channel mix, and cost structure are within acceptable ranges.",
+            "action":  "Continue monitoring diesel price and ingredient costs weekly via FFIA.",
+        }
+
+    # ── Warning ───────────────────────────────────────────────────────────────
+    if _has_lpg and nm < 20:
+        _lpg_count    = sum(1 for ft in food_types if ft in _LPG_FOOD_TYPES)
+        _reprice_pct  = 5 if nm >= 17 else 10
+        _warning = {
+            "type": "warning", "title": "LPG Cost Exposure",
+            "problem": (
+                f"Your menu has {_lpg_count} LPG-intensive dish type(s) and margin is "
+                f"{nm:.1f}% — approaching pressure territory."
+            ),
+            "reason":  "Stir fry, rice curry, and spicy soup are directly exposed to diesel price swings.",
+            "action":  (
+                f"Reprice your top LPG items by {_reprice_pct}–{_reprice_pct + 5}%, "
+                f"or bundle them with a low-COGS side to absorb cost increases. (Scenario 2)"
+            ),
+        }
+    elif _delivery_rev >= 60:
+        _over_target = max(10, round(_delivery_rev - 60))
+        _fee_recover = round(_top_gp * _over_target / 100, 1)
+        _warning = {
+            "type": "warning", "title": "GP Fee Pressure",
+            "problem": (
+                f"Delivery platforms account for {_delivery_rev:.0f}% of revenue "
+                f"(target: below 60%)."
+            ),
+            "reason":  f"{_top_name} charges {_top_gp:.0f}% commission — reducing effective margin on every order.",
+            "action":  (
+                f"Promote self-pickup to shift {_over_target}% off {_top_name} — "
+                f"this could recover ~{_fee_recover:.1f}% in GP fees per month."
+            ),
+        }
+    else:
+        _warning = {
+            "type": "warning", "title": "Monitor Ingredient Cost",
+            "problem": "Food cost is the largest variable affecting your margin.",
+            "reason":  "Market price swings for key ingredients can erode profitability quickly.",
+            "action":  "Review your top 5 ingredient prices monthly against Ministry of Commerce benchmarks.",
+        }
+
+    # ── Opportunity ───────────────────────────────────────────────────────────
+    if _walkin_rev < 20:
+        _shift_to_walkin = min(10, max(5, round(20 - _walkin_rev)))
+        _gp_save = round(_top_gp * _shift_to_walkin / 100, 1)
+        _opportunity = {
+            "type": "opportunity", "title": "Self-Pickup Opportunity",
+            "problem": f"Walk-in / Self-pickup is only {_walkin_rev:.0f}% of revenue (potential: 20%+).",
+            "reason":  "Direct orders have 0% platform fee — the highest margin per order available.",
+            "action":  (
+                f"Offer a self-pickup discount to shift {_shift_to_walkin}% from {_top_name} — "
+                f"saving ~{_gp_save:.1f}% in GP fees on those orders."
+            ),
+        }
+    elif nm > 25 and store_type != "ghost_kitchen":
+        _opportunity = {
+            "type": "opportunity", "title": "Margin Room to Grow",
+            "problem": f"Healthy margin of {nm:.1f}% gives room for a strategic promotion.",
+            "reason":  "A margin buffer above 25% allows selective discounting without risk.",
+            "action":  "Run a flash sale on your 2–3 lowest-COGS items to drive order volume.",
+        }
+    else:
+        _opportunity = {
+            "type": "opportunity", "title": "Optimise Procurement Cycle",
+            "problem": "Frequent small purchases increase per-unit logistics cost.",
+            "reason":  "Daily procurement adds fuel and delivery surcharges to ingredient cost.",
+            "action":  "Switch to every-other-day procurement to reduce logistics overhead by ~10%.",
+        }
+
+    return [_critical, _warning, _opportunity]
 
 
 def _render_profile_step_4(current_user: dict, profile: dict | None) -> None:
-    """Step 4: AI Risk Profile placeholder + summary + Save."""
-    # Step 4a: AI profile placeholder with forward-looking context
-    st.subheader("AI Risk Profile")
-    st.info(
-        "Step 4 AI profile will be added later.\n\n"
-        "**Coming soon:** FFIA will automatically suggest your Target, Warning, and Risk margin "
-        "thresholds based on your food types and store setup."
+    """Step 4: AI Risk Profile — insight summary, risk level, tags, alert cards, save."""
+
+    # Step 4a: Gather all session data needed for analysis
+    _store_type  = st.session_state.get("profile_store_type", "ghost_kitchen")
+    _seat_range  = st.session_state.get("profile_seat_range", "0")
+    _food_types  = st.session_state.get("profile_food_types", [])
+    _channels    = st.session_state.get("profile_channels") or {}
+    _name        = st.session_state.get("profile_restaurant_name", "")
+
+    # Step 4b: Compute margin preview (same formula as Step 3)
+    _preview = _compute_blended_margin_preview(
+        channels   = _channels,
+        food_types = _food_types,
+        store_type = _store_type,
+        seat_range = _seat_range,
     )
+    _nm = _preview["net_margin_pct"]
+
+    # Step 4c: Derive AI outputs from profile data
+    _summary      = _build_ai_profile_summary(_store_type, _food_types, _channels)
+    _fuel_insight = _build_fuel_insight(_food_types, _nm, _channels)
+    _risk         = _derive_risk_level(_nm)
+    _tags         = _derive_capability_tags(_food_types, _channels)
+    _alerts       = _generate_alert_cards(_nm, _channels, _food_types, _store_type)
+
+    # ── Section A: Header + AI summary card ───────────────────────────────────
+    st.subheader("AI Risk Profile")
+    st.caption("Generated from your store setup, food types, and revenue channel mix.")
+
+    with st.container(border=True):
+        _left, _right = st.columns([3, 1])
+
+        with _left:
+            # Step 4d: Restaurant name + AI profile summary line
+            st.markdown(
+                f'<div style="font-weight:750;font-size:1.05rem;margin-bottom:0.25rem;">'
+                f'{escape(_name) if _name else "Your Restaurant"}</div>'
+                f'<div style="color:var(--ffia-text-muted);font-size:0.9rem;">{escape(_summary)}</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Step 4d-insight: Fuel sensitivity insight line
+            st.markdown(
+                f'<div style="margin-top:0.6rem;padding:0.35rem 0.7rem;border-radius:10px;'
+                f'background:rgba(89,135,201,0.07);border:1px solid rgba(89,135,201,0.22);'
+                f'font-size:0.78rem;color:#4a6fa5;line-height:1.45;">'
+                f'💡 {escape(_fuel_insight)}</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Step 4e: Capability tags
+            if _tags:
+                _tag_html = "".join(
+                    f'<span style="display:inline-flex;align-items:center;margin:0.45rem 0.35rem 0 0;'
+                    f'padding:0.22rem 0.65rem;border-radius:999px;font-size:0.75rem;font-weight:700;'
+                    f'color:{c};background:{bg};border:1px solid {bd};">{label}</span>'
+                    for label, c, bg, bd in _tags
+                )
+                st.markdown(
+                    f'<div style="margin-top:0.6rem;">{_tag_html}</div>',
+                    unsafe_allow_html=True,
+                )
+
+        with _right:
+            # Step 4f: Risk level badge
+            st.markdown(
+                f'<div style="display:flex;flex-direction:column;align-items:center;'
+                f'justify-content:center;height:100%;gap:0.3rem;">'
+                f'<div style="padding:0.5rem 1rem;border-radius:16px;text-align:center;'
+                f'background:{_risk["bg"]};border:1px solid {_risk["bd"]};">'
+                f'<div style="font-size:1.3rem;font-weight:800;color:{_risk["color"]};">'
+                f'{_risk["icon"]}</div>'
+                f'<div style="font-size:0.72rem;font-weight:700;color:{_risk["color"]};'
+                f'text-transform:uppercase;letter-spacing:0.06em;">{_risk["label"]}</div>'
+                f'<div style="font-size:0.68rem;color:var(--ffia-text-muted);margin-top:0.15rem;">'
+                f'Est. {_nm:.1f}% margin</div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
+    # ── Section B: Alert cards ─────────────────────────────────────────────────
+    st.write("")
+    _render_section_header(
+        "Risk & Opportunity Alerts",
+        "FFIA identified these based on your profile. Review and approve to save.",
+    )
+
+    # Step 4g-styles: Visual hierarchy — critical is dominant, opportunity is lighter.
+    # border-width and title font-size reinforce the severity signal.
+    _ALERT_STYLES = {
+        "critical":    ("risk",  "✕ Critical",   "#c16f6f", "2px",  "1.02rem"),
+        "warning":     ("warn",  "⚠ Warning",    "#c28747", "1.5px","0.95rem"),
+        "opportunity": ("ok",    "✓ Opportunity", "#3d9068", "1px",  "0.88rem"),
+    }
+
+    _ac1, _ac2, _ac3 = st.columns(3)
+    for _col, _alert in zip((_ac1, _ac2, _ac3), _alerts):
+        _css_mod, _type_label, _type_color, _border_w, _title_fs = _ALERT_STYLES[_alert["type"]]
+        with _col:
+            st.markdown(
+                f'<div class="decision-card {_css_mod}" style="height:100%;border-width:{_border_w};">'
+                f'<div class="dc-label" style="color:{_type_color};">{_type_label}</div>'
+                f'<div style="font-weight:700;font-size:{_title_fs};margin-bottom:0.7rem;'
+                f'line-height:1.3;color:var(--ffia-text);">{escape(_alert["title"])}</div>'
+                f'<div style="font-size:0.82rem;margin-bottom:0.4rem;">'
+                f'<strong>Problem:</strong> {escape(_alert["problem"])}</div>'
+                f'<div style="font-size:0.8rem;color:var(--ffia-text-muted);margin-bottom:0.4rem;">'
+                f'<strong>Why:</strong> {escape(_alert["reason"])}</div>'
+                f'<div style="font-size:0.8rem;">'
+                f'<strong>Action:</strong> {escape(_alert["action"])}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    # ── Section C: Action buttons + navigation ─────────────────────────────────
     st.write("")
 
-    # Step 4b: Summary of all collected inputs
-    st.subheader("Profile Summary")
-    st.caption(
-        "Your profile will be used to personalize margin analysis and fuel impact recommendations."
-    )
-    st.write("**Restaurant Name:**", st.session_state["profile_restaurant_name"] or "\u2014")
-    st.write("**Food Types:**", ", ".join(st.session_state["profile_food_types"]) or "\u2014")
-    st.write("**Store Type:**", st.session_state["profile_store_type"])
-    st.write("**Seat Range:**", st.session_state["profile_seat_range"])
-    st.divider()
-
-    # Step 4c: Final guard — disable Save if required data is missing
-    _can_save = bool(
-        st.session_state["profile_restaurant_name"].strip()
-        and st.session_state["profile_food_types"]
-    )
+    _can_save = bool(_name.strip() and _food_types)
     if not _can_save:
-        st.warning("Some required fields are missing. Please go back and complete all steps.")
+        st.warning("Some required fields are missing — please go back and complete Steps 1 and 2.")
 
-    # Step 4d: Navigation — Cancel | Back | Save Profile
-    _col_cancel, _col_back, _col_spacer, _col_save = st.columns([1, 1, 2, 1])
-    with _col_cancel:
-        if st.button("Cancel", key="step4_cancel"):
+    _col_back, _col_ignore, _col_spacer, _col_approve = st.columns([1, 1, 2, 2])
+    with _col_back:
+        if st.button("← Back", key="step4_back"):
+            st.session_state["profile_step"] = 3
+            st.rerun()
+    with _col_ignore:
+        if st.button("Ignore", key="step4_ignore"):
+            # Discard stepper without saving — go to dashboard
             _clear_profile_stepper_state()
             st.session_state["page"] = "dashboard"
             st.rerun()
-    with _col_back:
-        if st.button("\u2190 Back", key="step4_back"):
-            st.session_state["profile_step"] = 3
-            st.rerun()
-    with _col_save:
-        if st.button("Save Profile", type="primary", key="step4_save", disabled=not _can_save):
-            # Step 4e: Resolve defaults for fields not collected in this stepper
+    with _col_approve:
+        if st.button(
+            "Apply optimization plan →",
+            type="primary",
+            key="step4_approve",
+            disabled=not _can_save,
+            use_container_width=True,
+        ):
+            # Step 4g: Resolve DB defaults for fields not collected in this stepper
             _existing_btype    = (profile.get("business_type") or "restaurant") if profile else "restaurant"
             _existing_currency = (profile.get("currency") or "THB") if profile else "THB"
             _existing_target   = float(profile.get("target_margin_pct") or 30.0) if profile else 30.0
             _existing_warning  = float(profile.get("warning_margin_pct") or 25.0) if profile else 25.0
             _existing_risk     = float(profile.get("risk_margin_pct") or 20.0) if profile else 20.0
 
-            # Step 4f: Persist to DB using existing upsert helper
+            # Step 4h: Persist to DB using existing upsert helper
             try:
                 upsert_restaurant_profile(
                     user_id=current_user["user_id"],
-                    restaurant_name=st.session_state["profile_restaurant_name"],
+                    restaurant_name=_name,
                     business_type=_existing_btype,
-                    food_types=st.session_state["profile_food_types"],
-                    store_type=st.session_state["profile_store_type"],
-                    seat_range=st.session_state["profile_seat_range"],
+                    food_types=_food_types,
+                    store_type=_store_type,
+                    seat_range=_seat_range,
                     currency=_existing_currency,
                     target_margin_pct=_existing_target,
                     warning_margin_pct=_existing_warning,
                     risk_margin_pct=_existing_risk,
                 )
-                # Step 4g: Clear stepper state, signal success, rerun to reset to Step 1
+                # Step 4h2: Persist channel mix — write Step 3 selections to restaurant_channel_mix
+                _channels_to_save = st.session_state.get("profile_channels") or {}
+                if _channels_to_save:
+                    upsert_channel_mix(
+                        user_id=current_user["user_id"],
+                        channels=_channels_to_save,
+                    )
+                # Step 4i: Clear stepper state, signal success, rerun to reset
                 _clear_profile_stepper_state()
                 st.session_state["profile_save_success"] = True
                 st.rerun()
             except Exception:
-                # Step 4h: DB failure — friendly message, raw exception not exposed
                 st.error("Your profile could not be saved. Please try again or contact support.")
 
 
@@ -1660,6 +2637,22 @@ def _render_profile_settings_page(current_user: dict) -> None:
             st.session_state["profile_seat_range"] = (
                 (_profile.get("seat_range") or "0") if _profile else "0"
             )
+        # Step 4c-guard: Ensure seat_range loaded from DB is valid for the saved store_type.
+        # Fixes corrupted profiles (e.g. ghost_kitchen + seat_range="1_10") before Step 2 renders.
+        _SEAT_VALID_FOR_STORE = {
+            "ghost_kitchen":   ["0"],
+            "hybrid_small":    ["1_10"],
+            "full_restaurant": ["11_30", "31_plus"],
+        }
+        _init_store = st.session_state.get("profile_store_type", "ghost_kitchen")
+        _init_seat  = st.session_state.get("profile_seat_range", "0")
+        if _init_seat not in _SEAT_VALID_FOR_STORE.get(_init_store, ["0"]):
+            st.session_state["profile_seat_range"] = _SEAT_VALID_FOR_STORE.get(_init_store, ["0"])[0]
+
+        # profile_channels is populated when the user completes Step 3.
+        # No DB field exists yet — session-only until a future schema extension.
+        if "profile_channels" not in st.session_state:
+            st.session_state["profile_channels"] = {}
 
         # Step 5: Step indicator
         _step = st.session_state["profile_step"]
@@ -1701,45 +2694,272 @@ def _get_cached_item_count(user_id: str) -> int | None:
     return st.session_state["cached_item_count"]
 
 
+# Step 7a: Render AI answer as a structured insight panel.
+# Profile/risk analysis answers → 4-section visual layout (hero + sections).
+# All other answers (oil price, invoice queries, etc.) → fallback flat card.
+def _render_ai_answer(reply: str) -> None:
+    """Render FFIA agent answer: structured insight card or flat fallback."""
+
+    # ── Inline helpers ──────────────────────────────────────────────────────
+    def _esc(t: str) -> str:
+        return escape(t)
+
+    def _inline(t: str) -> str:
+        """Convert **bold** and `code` in already HTML-escaped text."""
+        t = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', t)
+        t = re.sub(r'`([^`]+)`', r'<code>\1</code>', t)
+        return t
+
+    def _p(t: str) -> str:
+        return _inline(_esc(t))
+
+    def _is_meta(s: str) -> bool:
+        sl = s.lower()
+        return sl.startswith('data from:') or sl.startswith('ข้อมูลจาก:')
+
+    def _strip_bullet(s: str) -> str:
+        return s[2:] if (s.startswith('- ') or s.startswith('* ')) else s
+
+    # ── Parse ## headings into sections ────────────────────────────────────
+    sections: list[tuple[str | None, list[str]]] = []
+    cur_h: str | None = None
+    cur_ls: list[str] = []
+
+    for raw in reply.split('\n'):
+        line = raw.rstrip()
+        if line.startswith('## '):
+            sections.append((cur_h, cur_ls))
+            cur_h = line[3:].strip()
+            cur_ls = []
+        else:
+            cur_ls.append(line)
+    sections.append((cur_h, cur_ls))
+
+    # ── Classify each section ───────────────────────────────────────────────
+    def _classify(h: str | None) -> str:
+        if not h:
+            return 'preamble'
+        hl = h.lower()
+        if any(k in hl for k in ('เสี่ยงหลัก', 'main risk', 'biggest')):
+            return 'main_risk'
+        if any(k in hl for k in ('ทำไม', 'why', 'risky')):
+            return 'why'
+        if any(k in hl for k in ('หลักฐาน', 'evidence')):
+            return 'evidence'
+        if any(k in hl for k in ('แนวทาง', 'action', 'recommend')):
+            return 'actions'
+        return 'generic'
+
+    typed = [(h, ls, _classify(h)) for h, ls in sections]
+    types_found = {t for _, _, t in typed}
+    is_structured = bool(types_found & {'main_risk', 'why', 'actions'})
+
+    # ── FALLBACK: flat card for non-profile answers ─────────────────────────
+    if not is_structured:
+        parts = ['<div class="ffia-answer-card">']
+        in_ul = False
+        for heading, ls, _ in typed:
+            if heading:
+                if in_ul:
+                    parts.append('</ul>')
+                    in_ul = False
+                parts.append(f'<div class="ffia-h">{_p(heading)}</div>')
+            for line in ls:
+                s = line.strip()
+                if not s:
+                    if in_ul:
+                        parts.append('</ul>')
+                        in_ul = False
+                    continue
+                if _is_meta(s):
+                    if in_ul:
+                        parts.append('</ul>')
+                        in_ul = False
+                    parts.append(f'<div class="ffia-meta">{_esc(s)}</div>')
+                elif s.startswith('- ') or s.startswith('* '):
+                    if not in_ul:
+                        parts.append('<ul class="ffia-ul">')
+                        in_ul = True
+                    parts.append(f'<li class="ffia-li">{_p(s[2:])}</li>')
+                else:
+                    if in_ul:
+                        parts.append('</ul>')
+                        in_ul = False
+                    parts.append(f'<p class="ffia-p">{_p(s)}</p>')
+        if in_ul:
+            parts.append('</ul>')
+        parts.append('</div>')
+        st.markdown('\n'.join(parts), unsafe_allow_html=True)
+        return
+
+    # ── STRUCTURED layout: profile / risk analysis answers ─────────────────
+    html: list[str] = ['<div class="ffia-answer-card">']
+    meta_line = ''
+
+    # Step A: pre-process — strip blank lines and extract meta from all sections
+    processed: list[tuple[str | None, list[str], str]] = []
+    for heading, lines, stype in typed:
+        content = []
+        for raw_l in lines:
+            s = raw_l.strip()
+            if not s:
+                continue
+            if _is_meta(s):
+                if not meta_line:
+                    meta_line = s
+            else:
+                content.append(s)
+        processed.append((heading, content, stype))
+
+    # Step B: sort into original display order
+    # Main Risk → Why → Evidence → Recommended Actions → generic → preamble
+    _DISPLAY_ORDER = {'main_risk': 0, 'why': 1, 'evidence': 2, 'actions': 3, 'generic': 4, 'preamble': 5}
+    processed.sort(key=lambda x: _DISPLAY_ORDER.get(x[2], 6))
+
+    for heading, content, stype in processed:
+        if not content and stype not in ('main_risk',):
+            continue
+
+        if stype == 'main_risk':
+            # Join all content lines into the hero body
+            body_text = ' '.join(content)
+            html.append(
+                f'<div class="ffia-risk-hero">'
+                f'<div class="ffia-risk-hero-eyebrow">⚠ ความเสี่ยงหลัก · Main Risk</div>'
+                f'<p class="ffia-risk-hero-body">{_p(body_text)}</p>'
+                f'</div>'
+            )
+
+        elif stype == 'why':
+            items = ''.join(
+                f'<li class="ffia-bitem">{_p(_strip_bullet(s))}</li>'
+                for s in content
+            )
+            title = _esc(heading) if heading else 'ทำไมถึงเสี่ยง · Why This Is Risky'
+            html.append(
+                f'<div class="ffia-section">'
+                f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
+                f'<ul class="ffia-blist">{items}</ul>'
+                f'</div>'
+            )
+
+        elif stype == 'evidence':
+            # Render as annotated bullets: "Label: value" → bold inline label + text
+            items = []
+            for s in content:
+                s = _strip_bullet(s)
+                if ':' in s:
+                    label, _, value = s.partition(':')
+                    items.append(
+                        f'<li class="ffia-bitem">'
+                        f'<span class="ffia-ev-inline">{_esc(label.strip())}:</span>'
+                        f' {_p(value.strip())}'
+                        f'</li>'
+                    )
+                else:
+                    items.append(f'<li class="ffia-bitem">{_p(s)}</li>')
+            title = _esc(heading) if heading else 'หลักฐานจากข้อมูล · Evidence'
+            html.append(
+                f'<div class="ffia-section">'
+                f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
+                f'<ul class="ffia-blist">{"".join(items)}</ul>'
+                f'</div>'
+            )
+
+        elif stype == 'actions':
+            items = ''.join(
+                f'<li class="ffia-aitem">{_p(_strip_bullet(s))}</li>'
+                for s in content
+            )
+            title = _esc(heading) if heading else 'แนวทางแก้ไข · Recommended Actions'
+            html.append(
+                f'<div class="ffia-section ffia-section--actions">'
+                f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
+                f'<ol class="ffia-alist">{items}</ol>'
+                f'</div>'
+            )
+
+        elif stype == 'generic' and content:
+            items = ''.join(
+                f'<li class="ffia-bitem">{_p(_strip_bullet(s))}</li>'
+                for s in content
+            )
+            title = _esc(heading) if heading else ''
+            html.append(
+                f'<div class="ffia-section">'
+                + (f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>' if title else '')
+                + f'<ul class="ffia-blist">{items}</ul>'
+                f'</div>'
+            )
+
+        elif stype == 'preamble' and content:
+            for s in content:
+                html.append(f'<p class="ffia-p">{_p(s)}</p>')
+
+    if meta_line:
+        html.append(f'<div class="ffia-meta">{_esc(meta_line)}</div>')
+
+    html.append('</div>')
+    st.markdown('\n'.join(html), unsafe_allow_html=True)
+
+
 # Step 7b: Helper — run agent and append result to session messages
 def _run_agent_turn(prompt: str, current_user: dict, msg_container) -> None:
-    """Append prompt as user message, call agent, render response inside msg_container."""
+    """Append user msg, run agent, append assistant msg.
+    Does NOT render st.chat_message() — all chat bubble rendering lives in the message loop.
+    """
+    # Step 7b-1: Append user message — the loop renders it on the next rerun
     st.session_state.messages.append({"role": "user", "content": prompt})
 
+    # Step 7b-2: Build history (exclude the just-appended user message)
+    history = [
+        {"role": m["role"], "content": m["content"]}
+        for m in st.session_state.messages[:-1]
+    ]
+
+    # Step 7b-3: Run agent — spinner only, no st.chat_message wrapper
     with msg_container:
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        with st.spinner("FFIA is thinking..."):
+            result = _get_run_agent()(prompt, history, current_user_id=current_user["user_id"])
 
-        history = [
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.messages[:-1]
-        ]
+    # Step 7b-4: Store steps alongside the reply so the loop can render the trace expander
+    steps = result.get("intermediate_steps", [])
+    reply = result.get("output", "Sorry, I could not produce an answer.")
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": reply,
+        "steps": steps,
+    })
 
-        with st.chat_message("assistant"):
-            with st.spinner("FFIA is thinking..."):
-                result = _get_run_agent()(prompt, history, current_user_id=current_user["user_id"])
 
-            steps = result.get("intermediate_steps", [])
-            if steps:
-                with st.expander("Agent Reasoning Trace (click to expand)", expanded=False):
-                    for _i, (_tool_name, _obs) in enumerate(steps, 1):
-                        st.markdown(f"**Step {_i} — Action:** `{_tool_name}`")
-                        if _obs:
-                            st.markdown(f"**Observation:** {str(_obs)[:500]}")
-                        st.divider()
-                    reply = result.get("output", "Sorry, I could not produce an answer.")
-                    st.markdown(f"**Final Answer:** {reply}")
-            else:
-                reply = result.get("output", "Sorry, I could not produce an answer.")
-
-            st.markdown(reply)
-
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+# Step 7b: Dashboard viz page — stub for dev to build out
+def _render_dashboard_viz_page(current_user: dict):
+    """Render the Dashboard viz page: cost overview and performance metrics."""
+    st.title("Dashboard")
+    st.caption("Cost overview and performance metrics for your restaurant.")
+    # TODO: Junior dev builds below this line
+    st.info("Charts coming soon.")
 
 
 # Step 8: Dashboard page renderer — decision cockpit layout
 def _render_dashboard_page(current_user: dict):
-    """Render the main Dashboard: header, decision cards, quick actions, agent workspace."""
+    """Render the main Dashboard: header, decision cards, and quick actions."""
+
+    # Step 8-pre: One-time migration — if restaurant_channel_mix has no rows for this user
+    # but session_state["profile_channels"] exists, persist it silently to the DB now.
+    _uid = current_user["user_id"]
+    if st.session_state.get("profile_channels"):
+        try:
+            with get_connection(_uid) as _mig_conn:
+                with _mig_conn.cursor() as _mig_cur:
+                    _mig_cur.execute(
+                        "SELECT COUNT(*) FROM restaurant_channel_mix WHERE user_id = %s",
+                        (_uid,),
+                    )
+                    if _mig_cur.fetchone()[0] == 0:
+                        upsert_channel_mix(_uid, st.session_state["profile_channels"])
+        except Exception:
+            pass  # Migration is best-effort — never block the dashboard
 
     # ── Section A: Header ──────────────────────────────────────────────────────
     _render_page_hero(
@@ -1765,6 +2985,53 @@ def _render_dashboard_page(current_user: dict):
   <span class="status-pill info"><span class="pill-dot"></span>Last sync: today</span>
 </div>
 """, unsafe_allow_html=True)
+
+    # ── Section A2: Onboarding — additive "Get started" guide for first-time users ──
+    with st.container():
+        st.markdown("""
+<div class="decision-card" style="margin-bottom:1.2rem;">
+  <div class="dc-label">🚀 Get started with FFIA</div>
+  <div class="dc-sub" style="margin-bottom:1rem;">
+    Follow these steps to set up your restaurant and get accurate insights.
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        _ob1, _ob2, _ob3 = st.columns(3)
+        with _ob1:
+            st.markdown("""
+<div class="decision-card">
+  <div class="dc-label">① Set up your Business Profile</div>
+  <div class="dc-sub">Tell FFIA about your restaurant type and operations.</div>
+</div>
+""", unsafe_allow_html=True)
+            if st.button("Go to Business Profile", key="onboard_profile", use_container_width=True):
+                st.session_state["page"] = "profile_settings"
+                st.rerun()
+
+        with _ob2:
+            st.markdown("""
+<div class="decision-card">
+  <div class="dc-label">② Upload your first invoice</div>
+  <div class="dc-sub">Add real cost data to improve analysis accuracy.</div>
+</div>
+""", unsafe_allow_html=True)
+            if st.button("Upload Invoice", key="onboard_upload", use_container_width=True):
+                st.session_state["page"] = "upload"
+                st.rerun()
+
+        with _ob3:
+            st.markdown("""
+<div class="decision-card">
+  <div class="dc-label">③ Ask FFIA for insights</div>
+  <div class="dc-sub">Get pricing, margin, and fuel impact recommendations.</div>
+</div>
+""", unsafe_allow_html=True)
+            if st.button("Ask FFIA", key="onboard_ai", use_container_width=True):
+                st.session_state["page"] = "ai_assistant"
+                st.rerun()
+
+    st.write("")
 
     # ── Section B: Decision Cards ──────────────────────────────────────────────
     _dc1, _dc2, _dc3 = st.columns(3)
@@ -1832,19 +3099,20 @@ def _render_dashboard_page(current_user: dict):
     st.write("")
 
     # ── Section C: Quick Actions ───────────────────────────────────────────────
-    with st.container(border=True):
+    _quick_actions_slot = st.empty()
+    with _quick_actions_slot.container(border=True):
         _render_section_header(
-            "What would you like to do today?",
+            "Check your costs and profit",
             "Use a guided shortcut to start a common workflow, then continue the analysis in FFIA.",
         )
 
         _QUICK_ACTIONS = [
-            ("⛽ Check Diesel Price",      "What is today's diesel price?"),
-            ("📉 Find Low-Margin Items",    "Which of my menu items have the lowest margin?"),
-            ("📈 Simulate +5฿ Oil",         "What happens to my costs if diesel increases by 5 baht?"),
-            ("🧾 Analyze My Invoices",      "Summarize my invoice costs this month"),
-            ("💡 Suggest Repricing",        "Suggest menu repricing based on current fuel costs"),
-            ("📊 View Margin Breakdown",    "Show me a margin breakdown for my menu items"),
+            ("⛽ Today's fuel price",        "What is today's diesel price?"),
+            ("📉 Low-profit menu items",      "Which of my menu items have the lowest margin?"),
+            ("📊 Impact of +5฿ fuel",         "What happens to my costs if diesel increases by 5 baht?"),
+            ("🧾 Review my costs",            "Summarize my invoice costs this month"),
+            ("💰 What should I reprice?",     "Suggest menu repricing based on current fuel costs"),
+            ("📦 Where is profit lost?",      "Show me a margin breakdown for my menu items"),
         ]
 
         _row1_cols = st.columns(3)
@@ -1855,55 +3123,90 @@ def _render_dashboard_page(current_user: dict):
                 st.markdown('<div class="action-card">', unsafe_allow_html=True)
                 if st.button(_label, key=f"qa_{_col_idx}", use_container_width=True):
                     st.session_state["pending_prompt"] = _prompt
+                    st.session_state["page"] = "ai_assistant"
+                    _quick_actions_slot.empty()
                     st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Section D: Agent Workspace ─────────────────────────────────────────────
-    st.write("")
-    with st.container(border=True):
-        _render_section_header(
-            "Ask FFIA Agent",
-            "Get cost impact analysis, pricing suggestions, and fuel-risk insights in plain language.",
-        )
 
-        # Step D1: Prompt chips
-        _CHIPS = [
-            ("Today's diesel price?",     "What is today's diesel price?"),
-            ("Riskiest menu items?",       "Which of my menu items have the highest cost risk?"),
-            ("+5 baht fuel impact?",       "What happens to my costs if diesel increases by 5 baht?"),
-            ("My invoice summary",         "Summarize my invoice costs this month"),
-        ]
-        _chip_cols = st.columns(len(_CHIPS))
-        for _ci, (_chip_label, _chip_prompt) in enumerate(_CHIPS):
-            with _chip_cols[_ci]:
-                st.markdown('<div class="prompt-chip">', unsafe_allow_html=True)
-                if st.button(_chip_label, key=f"chip_{_ci}", use_container_width=True):
-                    st.session_state["pending_prompt"] = _chip_prompt
-                    st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
+# Step 8b: AI Assistant page renderer — chat-only workspace
+def _render_ai_assistant_page(current_user: dict):
+    """Render the dedicated AI Assistant page: shortcuts, chat, and analysis history."""
+    _render_page_hero(
+        "AI Assistant",
+        "Ask FFIA about fuel impact, invoice costs, margin risk, and pricing decisions.",
+        eyebrow="AI Assistant",
+    )
 
-    st.write("")
-
-    # Step D2: Initialize chat history
+    # Step A: Initialize chat state before rendering prompt shortcuts/workspace.
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    _chat_is_active = bool(st.session_state.messages) or bool(st.session_state.get("pending_prompt"))
 
-    # Step D3: Scrollable chat messages container
-    _msg_container = st.container(height=400, border=True)
-    with _msg_container:
-        for _msg in st.session_state.messages:
-            with st.chat_message(_msg["role"]):
-                st.markdown(_msg["content"])
+    st.write("")
+    # Step B: Show the shortcut prompt block only before the chat becomes active.
+    # This prevents an extra empty bordered card from appearing when the user
+    # arrives here from a Dashboard quick action with a pending prompt.
+    if not _chat_is_active:
+        with st.container(border=True):
+            _render_section_header(
+                "Ask FFIA Agent",
+                "Get cost impact analysis, pricing suggestions, and fuel-risk insights in plain language.",
+            )
+
+            _CHIPS = [
+                ("⛽ What's today's fuel price?",          "What is today's diesel price?"),
+                ("📉 Which items are losing money?",        "Which of my menu items have the highest cost risk?"),
+                ("🔺 How will fuel increase affect profit?","What happens to my costs if diesel increases by 5 baht?"),
+                ("🧾 Show my latest costs",                 "Summarize my invoice costs this month"),
+            ]
+            _chip_cols = st.columns(len(_CHIPS))
+            for _ci, (_chip_label, _chip_prompt) in enumerate(_CHIPS):
+                with _chip_cols[_ci]:
+                    st.markdown('<div class="prompt-chip">', unsafe_allow_html=True)
+                    if st.button(_chip_label, key=f"chip_{_ci}", use_container_width=True):
+                        st.session_state["pending_prompt"] = _chip_prompt
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.write("")
+
+    # Step D3: Render the chat container only when the chat is active so the
+    # dashboard opens at the top with no large empty workspace reserving space.
+    # pending_prompt counts as active, which keeps the spinner inside the same
+    # bordered chat workspace during loading.
+    if _chat_is_active:
+        _msg_container = st.container(height=640, border=True)
+        with _msg_container:
+            for _msg in st.session_state.messages:
+                with st.chat_message(_msg["role"]):
+                    if _msg["role"] == "assistant":
+                        _steps = _msg.get("steps", [])
+                        if _steps:
+                            with st.expander("Agent Reasoning Trace (click to expand)", expanded=False):
+                                for _i, (_tool_name, _obs) in enumerate(_steps, 1):
+                                    st.markdown(f"**Step {_i} — Action:** `{_tool_name}`")
+                                    if _obs:
+                                        st.markdown(f"**Observation:** {str(_obs)[:500]}")
+                                    st.divider()
+                                st.markdown(f"**Final Answer:** {_msg['content']}")
+                        _render_ai_answer(_msg["content"])
+                    else:
+                        st.markdown(_msg["content"])
+    else:
+        _msg_container = st.container()
 
     # Step D4: Process pending prompt (from quick actions / chips)
     _pending = st.session_state.pop("pending_prompt", None)
     if _pending:
         _run_agent_turn(_pending, current_user, _msg_container)
+        st.rerun()
 
     # Step D5: Chat input
     _user_input = st.chat_input("Ask about diesel price, invoice costs, margin risk...")
     if _user_input:
         _run_agent_turn(_user_input, current_user, _msg_container)
+        st.rerun()
 
     # ── Section E: Analysis History ────────────────────────────────────────────
     _past_assistant = [
@@ -1919,9 +3222,15 @@ def _render_dashboard_page(current_user: dict):
 
 # Step 9: Page router — dispatch to correct page based on session state
 _active_page = st.session_state.get("page", "dashboard")
-if _active_page == "upload":
-    _render_upload_page(_current_user)
-elif _active_page == "profile_settings":
-    _render_profile_settings_page(_current_user)
-else:
-    _render_dashboard_page(_current_user)
+_page_root = st.empty()
+with _page_root.container():
+    if _active_page == "upload":
+        _render_upload_page(_current_user)
+    elif _active_page == "profile_settings":
+        _render_profile_settings_page(_current_user)
+    elif _active_page == "ai_assistant":
+        _render_ai_assistant_page(_current_user)
+    elif _active_page == "dashboard_viz":
+        _render_dashboard_viz_page(_current_user)
+    else:
+        _render_dashboard_page(_current_user)

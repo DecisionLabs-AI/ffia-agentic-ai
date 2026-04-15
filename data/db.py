@@ -198,6 +198,46 @@ def create_tables():
                     seeded_at        TIMESTAMP DEFAULT NOW()
                 )
             """)
+
+            # Step 4k: Platform fee reference table — global, no RLS, no tenant scoping
+            # (docs/data_definition.md — Table 2: platform_fee)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS platform_fee (
+                    platform    VARCHAR(50)   PRIMARY KEY,
+                    fee_percent DECIMAL(5, 2) NOT NULL,
+                    is_default  BOOLEAN       NOT NULL DEFAULT false,
+                    updated_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Step 4l: Seed default platform fees (idempotent — skip if already seeded)
+            cur.execute("SELECT COUNT(*) FROM platform_fee")
+            if cur.fetchone()[0] == 0:
+                cur.executemany(
+                    "INSERT INTO platform_fee (platform, fee_percent, is_default) "
+                    "VALUES (%s, %s, %s)",
+                    [
+                        ("Grab",         30.00, True),
+                        ("Foodpanda",    30.00, False),
+                        ("LINE MAN",     30.00, False),
+                        ("Shopee Food",  25.00, False),
+                        ("Robinhood",     0.00, False),
+                    ],
+                )
+
+            # Step 4m: Per-user channel mix — tenant-scoped, persists Business Profile Step 3
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS restaurant_channel_mix (
+                    id                SERIAL PRIMARY KEY,
+                    user_id           TEXT          NOT NULL,
+                    platform          TEXT          NOT NULL,
+                    revenue_share_pct DECIMAL(5,2)  NOT NULL DEFAULT 0,
+                    platform_fee_pct  DECIMAL(5,2)  NOT NULL DEFAULT 0,
+                    is_active         BOOLEAN       NOT NULL DEFAULT true,
+                    updated_at        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, platform)
+                )
+            """)
         conn.commit()
 
 
@@ -560,7 +600,60 @@ def upsert_restaurant_profile(
         conn.commit()
 
 
-# Step 13: Standalone test block
+# Step 13: Persist user channel mix from Business Profile Step 3
+
+def upsert_channel_mix(user_id: str, channels: dict) -> None:
+    """
+    Persist all platform/channel selections for a user into restaurant_channel_mix.
+
+    Args:
+        user_id:  Authenticated tenant identifier
+        channels: Dict keyed by channel slug, each value is a dict with:
+                  label (str), revenue_share_pct (float), gp_pct (float), enabled (bool)
+
+    Behaviour:
+        - Active channels are upserted with their current revenue_share_pct / platform_fee_pct.
+        - Disabled channels are upserted with is_active = false so history is preserved.
+    """
+    # Step 13a: Normalize user_id
+    _uid = _require_user_id(user_id)
+
+    # Step 13b: Build rows list — one row per channel regardless of enabled state
+    rows = []
+    for _slug, _ch in channels.items():
+        rows.append((
+            _uid,
+            str(_ch.get("label", _slug)),
+            float(_ch.get("revenue_share_pct", 0)),
+            float(_ch.get("gp_pct", 0)),
+            bool(_ch.get("enabled", False)),
+        ))
+
+    if not rows:
+        return
+
+    # Step 13c: Upsert — insert or update on (user_id, platform) conflict
+    with get_connection(_uid) as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_batch(
+                cur,
+                """
+                INSERT INTO restaurant_channel_mix
+                    (user_id, platform, revenue_share_pct, platform_fee_pct, is_active)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, platform)
+                DO UPDATE SET
+                    revenue_share_pct = EXCLUDED.revenue_share_pct,
+                    platform_fee_pct  = EXCLUDED.platform_fee_pct,
+                    is_active         = EXCLUDED.is_active,
+                    updated_at        = CURRENT_TIMESTAMP
+                """,
+                rows,
+            )
+        conn.commit()
+
+
+# Step 14: Standalone test block
 if __name__ == "__main__":
     print("Creating tables...")
     create_tables()
