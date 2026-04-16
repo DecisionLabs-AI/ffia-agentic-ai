@@ -57,6 +57,10 @@ yarn-error.log*
 *.swp
 *.swo
 
+# --- Claude Code ---
+# Local Claude Code config (machine-specific paths)
+.claude/
+
 # --- Data: Large Files ---
 # Files over 10MB should not be committed (use download scripts instead per rubric 5b)
 # Add specific large file patterns here as needed
