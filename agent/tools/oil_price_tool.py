@@ -26,11 +26,11 @@ BANGCHAK_API_URL = "https://oil-price.bangchak.co.th/ApiOilPrice2/en"
 
 # Step 3: Alias map — normalised user input → OilName substring keyword
 _FUEL_ALIASES: dict[str, str] = {
-    # Diesel B20 — default fuel type for generic "diesel" queries
-    "diesel":       "diesel",
-    "ดีเซล":        "diesel",
+    # Diesel B20 (explicit only — use "b20" to request this variant)
     "b20":          "diesel",
-    # Hi Diesel S (ไฮดีเซล S)
+    # Hi Diesel S — ALL generic diesel queries resolve here (single default)
+    "diesel":       "hi diesel s",
+    "ดีเซล":        "hi diesel s",
     "ไฮดีเซล":      "hi diesel s",
     "ไฮดีเซล s":    "hi diesel s",
     "hi diesel s":  "hi diesel s",
@@ -77,14 +77,14 @@ def _find_fuel(items: list, keyword: str) -> dict | None:
     return None
 
 
-def get_oil_price_from_bangchak(fuel_type: str = "diesel") -> dict:
+def get_oil_price_from_bangchak(fuel_type: str = "hi diesel s") -> dict:
     """
     Fetch the latest price for a given fuel type from the Bangchak Oil Price API.
 
     Args:
         fuel_type: English name, Thai alias, or abbreviation.
-                   Defaults to "diesel" (Diesel B20 — standard diesel).
-                   Examples: "diesel", "hi diesel s", "g95", "เบนซิน 91", "e20".
+                   Defaults to "hi diesel s" (Hi Diesel S — single FFIA default).
+                   Examples: "hi diesel s", "b20", "g95", "เบนซิน 91", "e20".
 
     Returns a dict with keys:
         oil_type (str), price_per_liter (float), updated_at (str)
@@ -137,24 +137,24 @@ def get_oil_price_from_bangchak(fuel_type: str = "diesel") -> dict:
 
 # Step 12: LangChain @tool wrapper — returns a human-readable string for the agent
 @tool
-def oil_price_tool(fuel_type: str = "diesel") -> str:
+def oil_price_tool(fuel_type: str = "hi diesel s") -> str:
     """
     ALWAYS use this tool when the user asks about oil price, diesel price, or fuel cost.
     DO NOT use web search for oil price — this tool is the authoritative source.
 
     Fetches the latest price for a given fuel type from the Bangchak Oil Price API.
-    Defaults to Diesel B20 (standard diesel) when no fuel type is specified.
-    For Hi-Diesel, pass "hi diesel s" explicitly — do NOT use it for generic diesel queries.
+    Defaults to Hi Diesel S — the single FFIA default for ALL generic diesel queries.
+    Only use "b20" when the user explicitly asks for standard diesel / B20.
 
     Supported fuel_type values:
-      Diesel B20 (default): "diesel", "ดีเซล", "b20"
-      Hi Diesel S (explicit only): "hi diesel s", "ไฮดีเซล", "ไฮดีเซล s"
+      Hi Diesel S (default): "hi diesel s", "diesel", "ดีเซล", "ไฮดีเซล"
+      Diesel B20 (explicit only): "b20"
       Gasohol : "g95", "เบนซิน 95", "g91", "เบนซิน 91"
       Ethanol : "e20", "e85"
       Premium : "hi premium diesel"
 
     Args:
-        fuel_type: Fuel name, Thai alias, or abbreviation (default: "diesel").
+        fuel_type: Fuel name, Thai alias, or abbreviation (default: "hi diesel s").
 
     Returns:
         A plain-text sentence with the fuel price in THB/litre and the effective date.

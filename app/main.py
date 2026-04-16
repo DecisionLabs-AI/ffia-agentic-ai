@@ -2683,7 +2683,7 @@ def _get_cached_diesel_price() -> dict:
     """Fetch diesel price from Bangchak API; cached for 5 minutes across all sessions."""
     try:
         from agent.tools.oil_price_tool import get_oil_price_from_bangchak  # noqa: PLC0415
-        return get_oil_price_from_bangchak("diesel")
+        return get_oil_price_from_bangchak("hi diesel s")
     except Exception as _e:
         return {"error": str(_e)}
 
@@ -3086,7 +3086,7 @@ def _render_dashboard_page(current_user: dict):
     with _dc1:
         st.markdown(f"""
 <div class="{_card1_class}">
-  <div class="dc-label">Diesel Price Today</div>
+  <div class="dc-label">Hi-Diesel Price Today</div>
   <div class="dc-value">{_price_val}</div>
   <div class="dc-sub">{_price_sub}</div>
   {_card1_hint}
