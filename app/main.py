@@ -8,6 +8,8 @@
 import re
 import sys
 import base64
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import date
 from html import escape
@@ -2920,10 +2922,42 @@ def _run_agent_turn(prompt: str, current_user: dict, msg_container) -> None:
         for m in st.session_state.messages[:-1]
     ]
 
-    # Step 7b-3: Run agent — spinner only, no st.chat_message wrapper
+    # Step 7b-3: Run agent with a temporary staged status block inside the chat workspace.
+    # The final answer still renders only through the normal rerun-driven message loop.
+    _loading_steps = (
+        "Checking your data...",
+        "Calculating cost impact...",
+        "Preparing recommendation...",
+    )
+    _step_interval_sec = 0.9
+    _poll_interval_sec = 0.1
+    _run_agent = _get_run_agent()
+
     with msg_container:
-        with st.spinner("FFIA is thinking..."):
-            result = _get_run_agent()(prompt, history, current_user_id=current_user["user_id"])
+        with st.status(_loading_steps[0], expanded=True) as _status:
+            _status.write(_loading_steps[0])
+            _shown_steps = 1
+            _next_step_at = time.monotonic() + _step_interval_sec
+
+            with ThreadPoolExecutor(max_workers=1) as _executor:
+                _future = _executor.submit(
+                    _run_agent,
+                    prompt,
+                    history,
+                    current_user_id=current_user["user_id"],
+                )
+
+                while not _future.done():
+                    _now = time.monotonic()
+                    if _shown_steps < len(_loading_steps) and _now >= _next_step_at:
+                        _step_text = _loading_steps[_shown_steps]
+                        _status.update(label=_step_text, state="running")
+                        _status.write(_step_text)
+                        _shown_steps += 1
+                        _next_step_at = _now + _step_interval_sec
+                    time.sleep(_poll_interval_sec)
+
+                result = _future.result()
 
     # Step 7b-4: Store steps alongside the reply so the loop can render the trace expander
     steps = result.get("intermediate_steps", [])
