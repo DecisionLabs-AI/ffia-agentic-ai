@@ -26,10 +26,11 @@ BANGCHAK_API_URL = "https://oil-price.bangchak.co.th/ApiOilPrice2/en"
 
 # Step 3: Alias map — normalised user input → OilName substring keyword
 _FUEL_ALIASES: dict[str, str] = {
-    # Diesel B20
-    "diesel":       "diesel",
-    "ดีเซล":        "diesel",
+    # Diesel B20 (explicit only — use "b20" to request this variant)
     "b20":          "diesel",
+    # Hi Diesel S — generic "diesel" queries resolve here (standard Bangchak pump diesel)
+    "diesel":       "hi diesel s",
+    "ดีเซล":        "hi diesel s",
     # Hi Diesel S (ไฮดีเซล S)
     "ไฮดีเซล":      "hi diesel s",
     "ไฮดีเซล s":    "hi diesel s",

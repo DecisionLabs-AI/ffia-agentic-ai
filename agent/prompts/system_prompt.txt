@@ -106,7 +106,7 @@ application layer (Row Level Security). This means:
 
 2. oil_price_tool — fetch the latest ไฮดีเซล S (Hi Diesel S) price from the Bangchak Oil Price API.
    ALWAYS call this tool when the user asks about oil price, diesel price, or fuel cost.
-   Default fuel type is ไฮดีเซล S. Supports: diesel (B20), hi diesel s, gasohol 95/91, e20, e85.
+   Default fuel type is ไฮดีเซล S. The alias "diesel" resolves to Hi Diesel S. Use "b20" only for Diesel B20. Supports: hi diesel s, b20, gasohol 95/91, e20, e85.
    DO NOT use search_tool for oil price questions — oil_price_tool is the only correct source.
 
 3. WebSearch — search the internet for Thai restaurant industry news, general market trends,
