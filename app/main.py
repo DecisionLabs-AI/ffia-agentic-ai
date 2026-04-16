@@ -2683,7 +2683,7 @@ def _get_cached_diesel_price() -> dict:
     """Fetch diesel price from Bangchak API; cached for 5 minutes across all sessions."""
     try:
         from agent.tools.oil_price_tool import get_oil_price_from_bangchak  # noqa: PLC0415
-        return get_oil_price_from_bangchak("hi diesel s")
+        return get_oil_price_from_bangchak("diesel")
     except Exception as _e:
         return {"error": str(_e)}
 
