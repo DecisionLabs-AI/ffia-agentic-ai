@@ -7,6 +7,7 @@
 # Step 1: Imports
 import os
 import re
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 
@@ -34,10 +35,14 @@ _STOPWORDS = {
     "latest", "market", "news", "of", "on", "price", "prices", "restaurant",
     "restaurants", "thailand", "thai", "the", "today", "trend", "trends", "what",
 }
-_SUSPICIOUS_RESULT_PATTERN = re.compile(
-    r"(casino|betting|porn|sex|xxx|viagra|escort|พนัน|สล็อต|บาคาร่า|โป๊|adult)",
-    re.IGNORECASE,
-)
+_ALLOWED_RESULT_DOMAINS = {
+    "siammakro.co.th",
+    "makro.pro",
+    "moc.go.th",
+    "dit.go.th",
+    "lotuss.com",
+    "bigc.co.th",
+}
 _BLOCKED_QUERY_RULES = [
     (
         re.compile(
@@ -112,10 +117,39 @@ def _query_tokens(query: str) -> set[str]:
     return tokens
 
 
+def _augment_query_for_allowed_domains(query: str) -> str:
+    """Bias the search backend toward the approved source domains only."""
+    domain_filters = " OR ".join(
+        f"site:{domain}" for domain in sorted(_ALLOWED_RESULT_DOMAINS)
+    )
+    return f"{query} ({domain_filters})"
+
+
 def _is_blocked_query(query: str) -> bool:
     """Block search usage for requests that must use internal tools or logic."""
     normalized_query = query.strip()
     return any(pattern.search(normalized_query) for pattern, _ in _BLOCKED_QUERY_RULES)
+
+
+def _extract_result_url(result: dict) -> str:
+    """Extract the best available URL field from a result payload."""
+    return str(result.get("url") or result.get("link") or "").strip()
+
+
+def _is_allowed_result_domain(url: str) -> bool:
+    """Allow only Makro, Ministry of Commerce, Lotus's, and Big C domains."""
+    if not url:
+        return False
+
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        return False
+
+    return any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in _ALLOWED_RESULT_DOMAINS
+    )
 
 
 def _looks_trustworthy_result(query: str, result: dict) -> bool:
@@ -123,7 +157,7 @@ def _looks_trustworthy_result(query: str, result: dict) -> bool:
     combined_text = _normalize_text(result).lower()
     if not combined_text.strip():
         return False
-    if _SUSPICIOUS_RESULT_PATTERN.search(combined_text):
+    if not _is_allowed_result_domain(_extract_result_url(result)):
         return False
 
     query_terms = _query_tokens(query)
@@ -157,7 +191,7 @@ def _format_safe_results(results: list[dict]) -> str:
             or result.get("body")
             or "Untitled result"
         ).strip()
-        link = str(result.get("url") or result.get("link") or "").strip()
+        link = _extract_result_url(result)
         snippet = str(
             result.get("content")
             or result.get("snippet")
@@ -190,7 +224,7 @@ def search_tool(query: str) -> str:
         _search_func = _build_search_func()
 
     try:
-        raw_results = _search_func(query)
+        raw_results = _search_func(_augment_query_for_allowed_domains(query))
     except Exception:
         return SAFE_SEARCH_FALLBACK
 
