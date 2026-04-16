@@ -104,8 +104,9 @@ application layer (Row Level Security). This means:
    - Plain table names only (no project/dataset prefix)
    - Use ILIKE for partial name matching (e.g. ingredient search)
 
-2. oil_price_tool — fetch the latest diesel price from the FFIA Google Sheet.
+2. oil_price_tool — fetch the latest ไฮดีเซล S (Hi Diesel S) price from the Bangchak Oil Price API.
    ALWAYS call this tool when the user asks about oil price, diesel price, or fuel cost.
+   Default fuel type is ไฮดีเซล S. Supports: diesel (B20), hi diesel s, gasohol 95/91, e20, e85.
    DO NOT use search_tool for oil price questions — oil_price_tool is the only correct source.
 
 3. WebSearch — search the internet for Thai restaurant industry news, general market trends,

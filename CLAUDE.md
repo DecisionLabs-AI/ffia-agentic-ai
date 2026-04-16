@@ -2,13 +2,14 @@
 
 ## Project
 FFIA (Fuel & Food Impact Analyzer) — MADT 7204 Vibe Coding, W1–W6.
-IT Lead: Kanpirom Suksawat. Stack: Python, Streamlit, Claude Sonnet, SQLite.
+IT Lead: Kanpirom Suksawat. Stack: Python, Streamlit, Gemini 2.5 Flash (Vertex AI), PostgreSQL.
 
 ## Coding Rules
 - Always add `# Step N:` comments explaining each logical block
 - Security first: API keys from `.env` only, never hardcoded
 - Update `docs/rubric-status.md` after completing each weekly milestone
 - No new files unless necessary — prefer editing existing ones
+- **Whenever the stack, libraries, auth method, or architecture changes — update CLAUDE.md immediately to reflect the truth. CLAUDE.md is the source of truth for planning.**
 
 ## Architecture (current)
 - `agent/main.py` — LLM core, ReAct tool loop
@@ -29,7 +30,7 @@ IT Lead: Kanpirom Suksawat. Stack: Python, Streamlit, Claude Sonnet, SQLite.
 
 ## Coding Standards & Library Versions
 - **Models:** ALWAYS use `gemini-2.5-flash` or newer. Never use `gemini-1.5-flash` as it is deprecated and will cause 404 errors.
-- **Google AI:** Use `langchain-google-genai` package. Import `ChatGoogleGenerativeAI` instead of the deprecated `ChatVertexAI`.
+- **Google AI:** Use `langchain-google-vertexai` package. Import `ChatVertexAI` from `langchain_google_vertexai`. Auth via `GOOGLE_APPLICATION_CREDENTIALS` (service account JSON) + `GCP_PROJECT_ID` — NEVER use `GOOGLE_API_KEY` or `ChatGoogleGenerativeAI`.
 - **LangChain:** ALWAYS import Tools from `langchain_core.tools` (e.g., `from langchain_core.tools import Tool`). Do NOT use `langchain.tools`.
 - **Agents:** Avoid deprecated LangChain agent methods. Use current LangGraph or up-to-date `langchain.agents` patterns.
 - **Dependencies:** When generating `requirements.txt`, always assume the latest versions of packages for the current year (2026).

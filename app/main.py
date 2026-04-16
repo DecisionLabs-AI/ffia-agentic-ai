@@ -85,8 +85,8 @@ def _require_authenticated_user() -> dict:
         )
         with st.container(border=True):
             with st.form("ffia_login_form", clear_on_submit=False):
-                username = st.text_input("Username", value="admin")
-                password = st.text_input("Password", type="password", value="admin@madt2026")
+                username = st.text_input("Username")
+                password = st.text_input("Password", type="password")
                 submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
 
     if submitted:
@@ -2678,25 +2678,23 @@ def _render_profile_settings_page(current_user: dict) -> None:
 
 # Step 7: Dashboard helpers — session-cached data fetchers
 
+@st.cache_data(ttl=300)
 def _get_cached_diesel_price() -> dict:
-    """Fetch diesel price once per session from Bangchak API; cache result."""
-    if "cached_diesel" not in st.session_state:
-        try:
-            from agent.tools.oil_price_tool import get_oil_price_from_bangchak  # noqa: PLC0415
-            st.session_state["cached_diesel"] = get_oil_price_from_bangchak("diesel")
-        except Exception as _e:
-            st.session_state["cached_diesel"] = {"error": str(_e)}
-    return st.session_state["cached_diesel"]
+    """Fetch diesel price from Bangchak API; cached for 5 minutes across all sessions."""
+    try:
+        from agent.tools.oil_price_tool import get_oil_price_from_bangchak  # noqa: PLC0415
+        return get_oil_price_from_bangchak("hi diesel s")
+    except Exception as _e:
+        return {"error": str(_e)}
 
 
+@st.cache_data(ttl=300)
 def _get_cached_item_count(user_id: str) -> int | None:
-    """Count invoice line items once per session."""
-    if "cached_item_count" not in st.session_state:
-        try:
-            st.session_state["cached_item_count"] = count_invoice_items(user_id)
-        except Exception:
-            st.session_state["cached_item_count"] = None
-    return st.session_state["cached_item_count"]
+    """Count invoice line items; cached per user for 5 minutes."""
+    try:
+        return count_invoice_items(user_id)
+    except Exception:
+        return None
 
 
 # Step 7a: Render AI answer as a structured insight panel.
