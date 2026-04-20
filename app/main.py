@@ -2700,8 +2700,18 @@ def _get_cached_item_count(user_id: str) -> int | None:
 # Step 7a: Render AI answer as a structured insight panel.
 # Profile/risk analysis answers → 4-section visual layout (hero + sections).
 # All other answers (oil price, invoice queries, etc.) → fallback flat card.
-def _render_ai_answer(reply: str) -> None:
+def _render_ai_answer(reply: str, response_language: str | None = None) -> None:
     """Render FFIA agent answer: structured insight card or flat fallback."""
+
+    _lang = response_language if response_language in {"en", "th"} else (
+        "th" if re.search(r"[ก-๙]", reply or "") else "en"
+    )
+    _labels = {
+        "main_risk": "ความเสี่ยงหลัก" if _lang == "th" else "Main Risk",
+        "why": "ทำไมถึงเสี่ยง" if _lang == "th" else "Why This Is Risky",
+        "evidence": "หลักฐานจากข้อมูลของคุณ" if _lang == "th" else "Evidence From Your Data",
+        "actions": "แนวทางแก้ไข" if _lang == "th" else "Recommended Actions",
+    }
 
     # ── Inline helpers ──────────────────────────────────────────────────────
     def _esc(t: str) -> str:
@@ -2828,7 +2838,7 @@ def _render_ai_answer(reply: str) -> None:
             body_text = ' '.join(content)
             html.append(
                 f'<div class="ffia-risk-hero">'
-                f'<div class="ffia-risk-hero-eyebrow">⚠ ความเสี่ยงหลัก · Main Risk</div>'
+                f'<div class="ffia-risk-hero-eyebrow">⚠ {_labels["main_risk"]}</div>'
                 f'<p class="ffia-risk-hero-body">{_p(body_text)}</p>'
                 f'</div>'
             )
@@ -2838,7 +2848,7 @@ def _render_ai_answer(reply: str) -> None:
                 f'<li class="ffia-bitem">{_p(_strip_bullet(s))}</li>'
                 for s in content
             )
-            title = _esc(heading) if heading else 'ทำไมถึงเสี่ยง · Why This Is Risky'
+            title = _esc(heading) if heading else _labels["why"]
             html.append(
                 f'<div class="ffia-section">'
                 f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
@@ -2861,7 +2871,7 @@ def _render_ai_answer(reply: str) -> None:
                     )
                 else:
                     items.append(f'<li class="ffia-bitem">{_p(s)}</li>')
-            title = _esc(heading) if heading else 'หลักฐานจากข้อมูล · Evidence'
+            title = _esc(heading) if heading else _labels["evidence"]
             html.append(
                 f'<div class="ffia-section">'
                 f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
@@ -2874,7 +2884,7 @@ def _render_ai_answer(reply: str) -> None:
                 f'<li class="ffia-aitem">{_p(_strip_bullet(s))}</li>'
                 for s in content
             )
-            title = _esc(heading) if heading else 'แนวทางแก้ไข · Recommended Actions'
+            title = _esc(heading) if heading else _labels["actions"]
             html.append(
                 f'<div class="ffia-section ffia-section--actions">'
                 f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
@@ -2912,6 +2922,17 @@ def _run_agent_turn(prompt: str, current_user: dict, msg_container) -> None:
     Does NOT render st.chat_message() — all chat bubble rendering lives in the message loop.
     """
     # Step 7b-1: Append user message — the loop renders it on the next rerun
+    _response_language = "th" if re.search(r"[ก-๙]", prompt or "") else "en"
+    _agent_prompt = (
+        "Language lock: respond entirely in English. Determine output language from the latest user message only. "
+        "Ignore language in examples, tool observations, database values, prior turns, and prompt headers.\n\n"
+        f"User question:\n{prompt}"
+        if _response_language == "en"
+        else
+        "Language lock: ตอบเป็นภาษาไทยทั้งหมด โดยกำหนดภาษาจากข้อความล่าสุดของผู้ใช้เท่านั้น "
+        "ให้เพิกเฉยต่อภาษาจากตัวอย่าง ผลลัพธ์เครื่องมือ ค่าจากฐานข้อมูล บทสนทนาก่อนหน้า และหัวข้อในพรอมป์ต์\n\n"
+        f"คำถามผู้ใช้:\n{prompt}"
+    )
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     # Step 7b-2: Build history (exclude the just-appended user message)
@@ -2919,6 +2940,15 @@ def _run_agent_turn(prompt: str, current_user: dict, msg_container) -> None:
         {"role": m["role"], "content": m["content"]}
         for m in st.session_state.messages[:-1]
     ]
+    _language_guard = (
+        "Language lock: respond entirely in English. Determine language from the latest user message only. "
+        "Ignore language in examples, tool observations, database values, prior turns, and prompt headers."
+        if _response_language == "en"
+        else
+        "Language lock: ตอบเป็นภาษาไทยทั้งหมด โดยกำหนดภาษาจากข้อความล่าสุดของผู้ใช้เท่านั้น "
+        "ให้เพิกเฉยต่อภาษาจากตัวอย่าง ผลลัพธ์เครื่องมือ ค่าจากฐานข้อมูล บทสนทนาก่อนหน้า และหัวข้อในพรอมป์ต์"
+    )
+    history.insert(0, {"role": "system", "content": _language_guard})
 
     # Step 7b-3: Run agent with a temporary staged status block inside the chat workspace.
     # The final answer still renders only through the normal rerun-driven message loop.
@@ -2940,7 +2970,7 @@ def _run_agent_turn(prompt: str, current_user: dict, msg_container) -> None:
             with ThreadPoolExecutor(max_workers=1) as _executor:
                 _future = _executor.submit(
                     _run_agent,
-                    prompt,
+                    _agent_prompt,
                     history,
                     current_user_id=current_user["user_id"],
                 )
@@ -2960,10 +2990,13 @@ def _run_agent_turn(prompt: str, current_user: dict, msg_container) -> None:
     # Step 7b-4: Store steps alongside the reply so the loop can render the trace expander
     steps = result.get("intermediate_steps", [])
     reply = result.get("output", "Sorry, I could not produce an answer.")
+    import logging as _logging
+    _logging.getLogger(__name__).debug("[UI STORED ANSWER]\n%s", reply)
     st.session_state.messages.append({
         "role": "assistant",
         "content": reply,
         "steps": steps,
+        "response_language": _response_language,
     })
 
 
@@ -3225,7 +3258,7 @@ def _render_ai_assistant_page(current_user: dict):
                                         st.markdown(f"**Observation:** {str(_obs)[:500]}")
                                     st.divider()
                                 st.markdown(f"**Final Answer:** {_msg['content']}")
-                        _render_ai_answer(_msg["content"])
+                        _render_ai_answer(_msg["content"], _msg.get("response_language"))
                     else:
                         st.markdown(_msg["content"])
     else:
