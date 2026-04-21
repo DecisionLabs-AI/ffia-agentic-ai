@@ -148,7 +148,10 @@ _PROFILE_QUESTION_PATTERN = re.compile(
     r"|based.on.my|จากโปรไฟล์"
     r"|my.restaurant|ร้านของฉัน|ธุรกิจของฉัน"
     r"|am.i.at.risk|เสี่ยงไหม"
-    r"|how.is.my.restaurant)",
+    r"|how.is.my.restaurant"
+    r"|biggest.risk|ความเสี่ยงหลัก"
+    r"|should.i.optimize|optimize.my"
+    r"|ปัญหาหลัก|ร้านเป็นยังไง)",
     re.IGNORECASE,
 )
 
