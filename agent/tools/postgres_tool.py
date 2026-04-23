@@ -170,6 +170,11 @@ def reset_postgres_tool_user_id(token) -> None:
     _CURRENT_USER_ID.reset(token)
 
 
+def get_postgres_tool_user_id() -> str | None:
+    """Return the current tenant context bound for postgres_tool."""
+    return _CURRENT_USER_ID.get()
+
+
 def _validate_select_sql(sql: str) -> tuple[bool, str]:
     """
     Allow exactly one SELECT/CTE statement and block scripting, DDL, and mutations.

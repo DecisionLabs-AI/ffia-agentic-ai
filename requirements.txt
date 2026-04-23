@@ -15,6 +15,8 @@ google-cloud-aiplatform>=1.60.0
 
 # --- Database: PostgreSQL ---
 psycopg2-binary>=2.9.0
+langchain-postgres>=0.0.12
+pgvector>=0.3.0
 
 # --- Web Search (DuckDuckGo, no API key required) ---
 ddgs>=9.0.0

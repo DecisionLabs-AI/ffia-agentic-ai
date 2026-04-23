@@ -36,12 +36,24 @@ _STOPWORDS = {
     "restaurants", "thailand", "thai", "the", "today", "trend", "trends", "what",
 }
 _ALLOWED_RESULT_DOMAINS = {
+    # Wholesale / retail food sources
     "siammakro.co.th",
     "makro.pro",
-    "moc.go.th",
-    "dit.go.th",
     "lotuss.com",
     "bigc.co.th",
+    # Thai government — energy & commerce
+    "moc.go.th",       # Ministry of Commerce
+    "dit.go.th",       # Department of Internal Trade
+    "eppo.go.th",      # Energy Policy and Planning Office
+    "doeb.go.th",      # Department of Energy Business
+    "ptt.or.th",       # PTT public info
+    "bangchak.com",    # Bangchak fuel prices
+    # Reputable Thai news / reference
+    "bangkokpost.com",
+    "nationthailand.com",
+    "reuters.com",
+    "prachachat.net",
+    "thansettakij.com",
 }
 _BLOCKED_QUERY_RULES = [
     (
@@ -70,11 +82,21 @@ _BLOCKED_QUERY_RULES = [
     (
         re.compile(
             r"(postgres|sql|database|invoice|platform fee|restaurant_channel_mix|"
-            r"platform_fee|business rule|promo|promotion viability|diesel|fuel|oil price|"
-            r"invoice_items|restaurant profile|โปรไฟล์ร้าน|ฐานข้อมูล|ใบแจ้งหนี้|ค่าน้ำมัน|ค่าน้ำมันดีเซล)",
+            r"platform_fee|business rule|promo|promotion viability|"
+            r"invoice_items|restaurant profile|โปรไฟล์ร้าน|ฐานข้อมูล|ใบแจ้งหนี้)",
             re.IGNORECASE,
         ),
         "this request should use PostgreSQL or an existing FFIA tool",
+    ),
+    # Block fuel queries that reference internal margin/scenario logic — not live price lookups
+    (
+        re.compile(
+            r"(diesel|fuel|oil price|ค่าน้ำมัน|ค่าน้ำมันดีเซล)"
+            r".{0,60}"
+            r"(simulate|scenario|impact|margin|cogs|calculate|ต้นทุน|กำไร|คำนวณ|วิเคราะห์)",
+            re.IGNORECASE,
+        ),
+        "fuel impact/scenario calculations must use FFIA internal tools, not web search",
     ),
 ]
 

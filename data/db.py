@@ -429,7 +429,23 @@ def fetch_invoice_items(invoice_id: int, user_id: str) -> list[dict]:
             return [dict(row) for row in cur.fetchall()]
 
 
-# Step 10b: Count all line items for a user — used by dashboard decision card
+# Step 10b: Delete an invoice and its line items for a user — RLS-safe
+def delete_invoice(invoice_id: int, user_id: str) -> bool:
+    """Delete invoice and cascade to invoice_items.
+    Returns True if deleted, False if not found."""
+    normalized_user_id = _require_user_id(user_id)
+    with get_connection(normalized_user_id) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM invoices WHERE id = %s AND user_id = %s",
+                (invoice_id, normalized_user_id),
+            )
+            deleted = cur.rowcount > 0
+            conn.commit()
+            return deleted
+
+
+# Step 10c: Count all line items for a user — used by dashboard decision card
 def count_invoice_items(user_id: str) -> int:
 
     """Return total count of invoice line items stored for this user."""

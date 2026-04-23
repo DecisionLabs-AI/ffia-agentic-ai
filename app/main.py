@@ -11,7 +11,7 @@ import base64
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
 from html import escape
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -32,6 +32,7 @@ from data.db import (
     upsert_restaurant_profile,
     upsert_channel_mix,
     count_invoice_items,
+    delete_invoice,
 )
 
 
@@ -1392,10 +1393,61 @@ def _render_monthly_invoices_section(current_user: dict) -> None:
         st.info("No invoices uploaded this month.")
         return
 
-    # Step 6b: Display invoice table (date, vendor, invoice_no, total_amount)
-    _inv_df = pd.DataFrame(invoices)[["invoice_date", "vendor", "invoice_no", "total_amount"]]
-    st.dataframe(_inv_df, use_container_width=True, hide_index=True)
+    # Step 6b: Display invoice rows with per-row delete button
+    _hdr1, _hdr2, _hdr3, _hdr4, _hdr5 = st.columns([2, 3, 2, 2, 1])
+    _hdr1.markdown("**Date**")
+    _hdr2.markdown("**Vendor**")
+    _hdr3.markdown("**Invoice No**")
+    _hdr4.markdown("**Total (THB)**")
+    _hdr5.markdown("**Del**")
 
+    for _row in invoices:
+        _inv_id   = _row["id"]
+        _inv_no   = _row["invoice_no"]
+        _vendor   = _row["vendor"]
+        _inv_date = _row["invoice_date"]
+        _total    = _row["total_amount"]
+        _ck       = f"confirm_del_{_inv_id}"
+
+        _c1, _c2, _c3, _c4, _c5 = st.columns([2, 3, 2, 2, 1])
+        _c1.write(str(_inv_date))
+        _c2.write(_vendor)
+        _c3.write(_inv_no)
+        _c4.write(f"{_total:,.2f}")
+
+        if _c5.button("Delete", key=f"del_{_inv_id}", type="secondary"):
+            st.session_state[_ck] = True
+
+        if st.session_state.get(_ck):
+            st.warning(f"Delete invoice {_inv_no} from {_vendor} ({_inv_date})?")
+            st.markdown(
+                f"""
+                <style>
+                [data-testid*="confirm_{_inv_id}"] > button {{
+                    background-color: #dc2626 !important;
+                    border-color: #dc2626 !important;
+                    color: #ffffff !important;
+                }}
+                [data-testid*="confirm_{_inv_id}"] > button:hover {{
+                    background-color: #b91c1c !important;
+                    border-color: #b91c1c !important;
+                    color: #ffffff !important;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            _cc1, _cc2 = st.columns(2)
+            if _cc1.button("Confirm", key=f"confirm_{_inv_id}", type="primary"):
+                delete_invoice(_inv_id, current_user["user_id"])
+                st.session_state.pop(_ck)
+                st.success("ลบแล้ว")
+                st.rerun()
+            if _cc2.button("Cancel", key=f"cancel_{_inv_id}", type="secondary"):
+                st.session_state.pop(_ck)
+                st.rerun()
+
+    st.divider()
     # Step 6c: Invoice selectbox — label combines invoice_no, vendor, date for clarity
     _options = {
         f"{r['invoice_no']} — {r['vendor']} ({r['invoice_date']})": r["id"]
@@ -2733,6 +2785,12 @@ def _render_ai_answer(reply: str, response_language: str | None = None) -> None:
     def _strip_bullet(s: str) -> str:
         return s[2:] if (s.startswith('- ') or s.startswith('* ')) else s
 
+    def _is_internal_scaffold_label(h: str | None) -> bool:
+        if not h:
+            return False
+        _norm = re.sub(r'[^a-z0-9 ]+', '', h.lower()).strip()
+        return _norm in {"verdict", "key number", "what to do"}
+
     # ── Parse ## headings into sections ────────────────────────────────────
     sections: list[tuple[str | None, list[str]]] = []
     cur_h: str | None = None
@@ -2772,7 +2830,7 @@ def _render_ai_answer(reply: str, response_language: str | None = None) -> None:
         parts = ['<div class="ffia-answer-card">']
         in_ul = False
         for heading, ls, _ in typed:
-            if heading:
+            if heading and not _is_internal_scaffold_label(heading):
                 if in_ul:
                     parts.append('</ul>')
                     in_ul = False
@@ -2848,7 +2906,7 @@ def _render_ai_answer(reply: str, response_language: str | None = None) -> None:
                 f'<li class="ffia-bitem">{_p(_strip_bullet(s))}</li>'
                 for s in content
             )
-            title = _esc(heading) if heading else _labels["why"]
+            title = _esc(heading) if (heading and not _is_internal_scaffold_label(heading)) else _labels["why"]
             html.append(
                 f'<div class="ffia-section">'
                 f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
@@ -2871,7 +2929,7 @@ def _render_ai_answer(reply: str, response_language: str | None = None) -> None:
                     )
                 else:
                     items.append(f'<li class="ffia-bitem">{_p(s)}</li>')
-            title = _esc(heading) if heading else _labels["evidence"]
+            title = _esc(heading) if (heading and not _is_internal_scaffold_label(heading)) else _labels["evidence"]
             html.append(
                 f'<div class="ffia-section">'
                 f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
@@ -2884,7 +2942,7 @@ def _render_ai_answer(reply: str, response_language: str | None = None) -> None:
                 f'<li class="ffia-aitem">{_p(_strip_bullet(s))}</li>'
                 for s in content
             )
-            title = _esc(heading) if heading else _labels["actions"]
+            title = _esc(heading) if (heading and not _is_internal_scaffold_label(heading)) else _labels["actions"]
             html.append(
                 f'<div class="ffia-section ffia-section--actions">'
                 f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>'
@@ -2897,7 +2955,7 @@ def _render_ai_answer(reply: str, response_language: str | None = None) -> None:
                 f'<li class="ffia-bitem">{_p(_strip_bullet(s))}</li>'
                 for s in content
             )
-            title = _esc(heading) if heading else ''
+            title = _esc(heading) if (heading and not _is_internal_scaffold_label(heading)) else ''
             html.append(
                 f'<div class="ffia-section">'
                 + (f'<div class="ffia-section-head"><span class="ffia-section-title">{title}</span></div>' if title else '')
@@ -3107,7 +3165,28 @@ def _render_dashboard_page(current_user: dict):
     # Card 1 — Diesel Price
     if _diesel_ok:
         _price_val = f"{_diesel['price_per_liter']:.2f} ฿/L"
-        _price_sub = f"Updated {_diesel.get('updated_at', 'N/A')}"
+        _effective_raw = str(_diesel.get("updated_at") or "N/A")
+        _effective_disp = _effective_raw
+        _effective_date = None
+        _as_of_date = None
+        try:
+            _effective_date = datetime.strptime(_effective_raw, "%d/%m/%Y").date()
+            _effective_disp = _effective_date.strftime("%d %b %Y")
+        except (TypeError, ValueError):
+            pass
+
+        _as_of_raw = str(_diesel.get("data_as_of") or "")
+        try:
+            _as_of_date = datetime.strptime(_as_of_raw, "%d/%m/%Y").date()
+        except (TypeError, ValueError):
+            pass
+
+        if _effective_raw == "N/A":
+            _base_sub = "Effective date unavailable"
+        else:
+            _base_sub = f"Effective since {escape(_effective_disp)}"
+
+        _price_sub = f"{_base_sub}<br>Last checked: Today"
         _card1_class = "decision-card warn"
         _card1_hint  = '<span class="dc-hint">May affect delivery costs</span>'
     else:

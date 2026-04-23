@@ -354,7 +354,7 @@ def run_agent(
     try:
         result = _get_agent().invoke(
             {"messages": agent_messages},
-            config={"callbacks": callbacks or []}
+            config={"callbacks": callbacks or [], "recursion_limit": 9}
         )
     finally:
         reset_postgres_tool_user_id(user_token)
