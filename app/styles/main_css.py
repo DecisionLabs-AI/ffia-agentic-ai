@@ -1,6 +1,8 @@
 def _get_main_css() -> str:
     return """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+
 :root {
     --ffia-bg: #fffdfa;
     --ffia-bg-soft: #fff7f2;
@@ -46,7 +48,7 @@ def _get_main_css() -> str:
 }
 
 html, body, [class*="css"] {
-    font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-family: "Sarabun", "Noto Sans Thai", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -934,7 +936,7 @@ div[data-baseweb="textarea"] > div:focus-within {
    parts of the app. Each rule overrides the global p/li muted color.     */
 .ffia-answer-card {
     padding: 2px 0 6px 0;
-    font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-family: "Sarabun", "Noto Sans Thai", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
 /* ── Fallback flat-card elements (non-structured answers) ── */

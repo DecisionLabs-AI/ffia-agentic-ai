@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from html import escape
 
 import streamlit as st
+from langgraph.errors import GraphRecursionError
 
 from app.components.layout import _render_page_hero, _render_section_header
 
@@ -308,7 +309,19 @@ def _run_agent_turn(
                         _next_step_at = _now + _step_interval_sec
                     time.sleep(_poll_interval_sec)
 
-                result = _future.result()
+                # Step 7b-3b: Catch recursion limit — return a user-friendly Thai message
+                # instead of surfacing a raw traceback when the agent loops too many times.
+                try:
+                    result = _future.result()
+                except GraphRecursionError:
+                    _status.update(label="⚠️ Analysis limit reached", state="error")
+                    result = {
+                        "output": (
+                            "ขออภัย — AI ไม่สามารถสรุปคำตอบได้ในรอบนี้ (เกินขีดจำกัดการวิเคราะห์)\n\n"
+                            "ลองถามคำถามที่เจาะจงขึ้น เช่น ระบุชื่อเมนู ช่วงเวลา หรือหัวข้อที่ต้องการวิเคราะห์"
+                        ),
+                        "intermediate_steps": [],
+                    }
 
     # Step 7b-4: Store steps alongside the reply so the loop can render the trace expander
     steps = result.get("intermediate_steps", [])
@@ -352,14 +365,17 @@ def _render_ai_assistant_page(
             )
 
             _CHIPS = [
-                ("⛽ What's today's fuel price?",          "What is today's diesel price?"),
-                ("📉 Which items are losing money?",        "Which of my menu items have the highest cost risk?"),
-                ("🔺 How will fuel increase affect profit?","What happens to my costs if diesel increases by 5 baht?"),
-                ("🧾 Show my latest costs",                 "Summarize my invoice costs this month"),
+                ("⛽ ดีเซลขึ้น 5 บาท กระทบฉันแค่ไหน",    "ดีเซลขึ้น 5 บาท กระทบต้นทุนและกำไรของฉันแค่ไหน"),
+                ("🛵 ช่องทางเดลิเวอรี่ยังทำกำไรไหม",       "ช่องทางเดลิเวอรี่ของฉันยังทำกำไรอยู่ไหม"),
+                ("💸 โปรนี้ยังคุ้มไหม",                     "โปรโมชั่นที่ฉันจะทำยังคุ้มอยู่ไหม"),
+                ("📊 ต้นทุนฉันแพงตรงไหน",                  "ต้นทุนของฉันแพงที่สุดตรงไหน"),
+                ("📉 กำไรหายไปตรงไหน",                     "กำไรของฉันหายไปตรงไหน"),
+                ("🧺 วัตถุดิบไหนแพงที่สุด",                 "วัตถุดิบไหนที่แพงที่สุดในเดือนนี้"),
             ]
-            _chip_cols = st.columns(len(_CHIPS))
+            _chip_row1, _chip_row2 = st.columns(3), st.columns(3)
             for _ci, (_chip_label, _chip_prompt) in enumerate(_CHIPS):
-                with _chip_cols[_ci]:
+                _col = _chip_row1[_ci] if _ci < 3 else _chip_row2[_ci - 3]
+                with _col:
                     st.markdown('<div class="prompt-chip">', unsafe_allow_html=True)
                     if st.button(_chip_label, key=f"chip_{_ci}", use_container_width=True):
                         st.session_state["pending_prompt"] = _chip_prompt
