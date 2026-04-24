@@ -35,12 +35,12 @@ concrete actions — with full reasoning transparency so owners can trust the ou
 
 ---
 
-## Current State (W3)
+## Current State (W4)
 
-- **Agent**: LangGraph ReAct agent powered by Gemini 2.5 Flash (Google AI API)
-- **Tools**: PostgreSQL SQL tool, Bangchak oil price API tool, 4 business-rule tools (platform floor guard, promo profitability, COGS alert, scenario classifier), DuckDuckGo web search
-- **UI**: Streamlit chat interface with dark sidebar, reasoning trace expander; pages for Dashboard, Data Upload (OCR), and Business Profile Settings
-- **Data**: PostgreSQL connected via `DATABASE_URL` — invoices, invoice items, and restaurant profiles stored with Row-Level Security
+- **Agent**: LangGraph ReAct agent powered by Gemini 2.5 Flash (Vertex AI)
+- **Tools**: PostgreSQL SQL tool, Bangchak oil price API tool, ingredient market price tool, platform GP lookup tool, RAG vector search tool, 4 business-rule tools (platform floor guard, promo profitability, COGS alert, scenario classifier), DuckDuckGo web search
+- **UI**: Streamlit app modularized into `app/views/` pages and `app/components/`; 3-step guided Business Setup stepper; invoice delete; dark sidebar with active-state nav
+- **Data**: PostgreSQL connected via `DATABASE_URL` — invoices, invoice items, restaurant profiles, ingredient market prices, and invoice embeddings stored with Row-Level Security
 
 ---
 
@@ -65,6 +65,9 @@ FFIA is an **agentic AI system** — the AI agent is the product, not a feature 
 |---|---|---|
 | `oil_price_tool` | `agent/tools/oil_price_tool.py` | Live diesel/gasohol prices from Bangchak API (Thai & English aliases) |
 | `postgres_tool` | `agent/tools/postgres_tool.py` | SELECT queries against PostgreSQL with RLS + 50-row cap |
+| `ingredient_price_tool` | `agent/tools/ingredient_price_tool.py` | Ingredient market price lookup from PostgreSQL reference table |
+| `platform_gp_lookup_tool` | `agent/tools/platform_gp_lookup_tool.py` | Per-platform gross profit % lookup |
+| `rag_tool` | `agent/tools/rag_tool.py` | Vector similarity search over saved invoice embeddings (pgvector) |
 | `platform_floor_guard_tool` | `agent/tools/business_rules_tool.py` | Platform cost floor check — HEALTHY/WATCH/WARNING/CRITICAL (Rule L1) |
 | `promo_profitability_tool` | `agent/tools/business_rules_tool.py` | Promo viability + psychological pricing recommendation (Rule L3) |
 | `cogs_alert_tool` | `agent/tools/business_rules_tool.py` | COGS impact alert + substitute ingredient map (Rule L4) |
@@ -72,7 +75,7 @@ FFIA is an **agentic AI system** — the AI agent is the product, not a feature 
 | `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo (fallback for general queries) |
 
 ### LLM
-Gemini 2.5 Flash via Google AI API (`langchain-google-genai`) — powers the agent's ReAct reasoning loop.
+Gemini 2.5 Flash via Vertex AI (`langchain-google-vertexai` / `ChatVertexAI`) — powers the agent's ReAct reasoning loop. Auth via GCP service account (`GCP_SERVICE_ACCOUNT_JSON` + `GCP_PROJECT_ID`).
 
 ---
 
@@ -81,27 +84,47 @@ Gemini 2.5 Flash via Google AI API (`langchain-google-genai`) — powers the age
 ```
 agentic-ai-mcp/
 ├── agent/
-│   ├── main.py                      # LangGraph ReAct agent + run_agent() function
+│   ├── main.py                          # LangGraph ReAct agent + run_agent() function
 │   ├── tools/
-│   │   ├── oil_price_tool.py        # Live oil price from Bangchak API
-│   │   ├── business_rules_tool.py   # L1 platform guard, L3 promo, L4 COGS, scenario classifier
-│   │   ├── postgres_tool.py         # PostgreSQL SELECT tool (RLS-enforced, 50-row cap)
-│   │   └── search_tool.py           # DuckDuckGo web search tool
+│   │   ├── oil_price_tool.py            # Live oil price from Bangchak API
+│   │   ├── business_rules_tool.py       # L1 platform guard, L3 promo, L4 COGS, scenario classifier
+│   │   ├── postgres_tool.py             # PostgreSQL SELECT tool (RLS-enforced, 50-row cap)
+│   │   ├── ingredient_price_tool.py     # Ingredient market price lookup from PostgreSQL
+│   │   ├── platform_gp_lookup_tool.py   # Per-platform GP % lookup
+│   │   ├── rag_tool.py                  # Invoice embedding vector search (pgvector)
+│   │   └── search_tool.py               # DuckDuckGo web search tool
 │   └── prompts/
-│       └── system_prompt.txt        # Agent role, tool guidance, Bangkok/THB context, output format
+│       └── system_prompt.txt            # Agent role, tool guidance, Bangkok/THB context, output format
 ├── app/
-│   ├── main.py                      # Streamlit UI — Dashboard, Data Upload, Business Profile Settings
+│   ├── main.py                          # Streamlit bootstrap — auth wall, CSS, sidebar, page router
+│   ├── views/
+│   │   ├── chat.py                      # AI Assistant chat page
+│   │   ├── dashboard.py                 # Dashboard page — decision cards, quick actions
+│   │   ├── profile.py                   # Business Setup 3-step stepper — profile form + upload + readiness
+│   │   └── upload.py                    # Data Upload page — OCR invoice ingestion
+│   ├── components/
+│   │   ├── layout.py                    # _render_page_hero(), _render_section_header(), _load_logo_b64()
+│   │   └── sidebar.py                   # _render_sidebar(), _render_sidebar_nav_button()
+│   ├── styles/
+│   │   └── main_css.py                  # Global CSS theme string (injected via st.markdown)
 │   ├── utils/
-│   │   ├── auth.py                  # PBKDF2 password verification, session helpers
-│   │   └── ocr.py                   # Claude Vision invoice OCR and JSON cleanup
+│   │   ├── auth.py                      # PBKDF2 password verification, session helpers
+│   │   ├── ocr.py                       # Claude Vision invoice OCR and JSON cleanup
+│   │   └── upload_cache.py              # Upload file cache key builder
 │   └── assets/
-│       ├── ffia_logo_design.png     # Sidebar logo
-│       ├── grab.png                 # Grab delivery platform icon
-│       ├── lineman.png              # LINE MAN delivery platform icon
-│       ├── shopeefood.png           # Shopee Food delivery platform icon
-│       └── walkin.png               # Walk-in channel icon
+│       ├── ffia_logo_design.png         # Sidebar logo
+│       ├── grab.png                     # Grab delivery platform icon
+│       ├── lineman.png                  # LINE MAN delivery platform icon
+│       ├── shopeefood.png               # Shopee Food delivery platform icon
+│       └── walkin.png                   # Walk-in channel icon
 ├── data/
-│   └── db.py                        # PostgreSQL helpers — invoice CRUD, restaurant profile upsert, RLS
+│   ├── db.py                            # PostgreSQL helpers — invoice CRUD, profile upsert, RAG schema, RLS
+│   ├── scripts/
+│   │   ├── oil_price_pipeline.py        # Oil price data ingestion pipeline
+│   │   └── seed_ingredient_aliases.py   # Ingredient alias seeding script
+│   └── raw/
+│       ├── ingredient_market_price.csv          # Ingredient reference prices
+│       └── ingredient_matching_template.csv     # Alias mapping template
 ├── docs/
 │   ├── architecture.md              # Agent architecture documentation
 │   ├── business_rules.md            # Margin formulas, cost thresholds, pricing rules
@@ -109,6 +132,7 @@ agentic-ai-mcp/
 │   ├── data_definition.md           # Schema definitions and field meanings
 │   ├── demo_script.md               # Guided demo flow and expected agent responses
 │   └── rubric-status.md             # Weekly milestone & grading tracker
+├── tests/                           # Unit and integration tests
 ├── notebooks/                       # Exploratory notebooks
 ├── .env.example                     # Environment variable template (safe to commit)
 ├── .gitignore                       # Excludes .env, credentials, __pycache__
@@ -133,9 +157,9 @@ agentic-ai-mcp/
 
 ### Prerequisites
 - Python 3.10+
-- Google AI API key for Gemini (`GOOGLE_API_KEY`)
-- GCP service account with Vertex AI access (`GCP_SERVICE_ACCOUNT_JSON`, `GCP_PROJECT_ID`) — for invoice OCR
+- GCP service account with Vertex AI access (`GCP_SERVICE_ACCOUNT_JSON`, `GCP_PROJECT_ID`) — powers both the Gemini 2.5 Flash agent and the Claude Vision OCR
 - PostgreSQL database accessible via connection URL (`DATABASE_URL`)
+- pgvector extension enabled on the PostgreSQL instance (for RAG tool)
 
 ### Steps
 
@@ -150,11 +174,11 @@ cp .env.example .env
 
 # Step 3: Fill in your runtime credentials in .env
 # Required:
-#   GOOGLE_API_KEY=your_gemini_api_key_here
 #   DATABASE_URL=postgresql://user:password@host:5432/dbname
 #   FFIA_AUTH_USERS_JSON=[{"username":"...","password_hash":"pbkdf2_sha256$...","display_name":"..."}]
 #   GCP_PROJECT_ID=your-gcp-project-id
 #   GCP_SERVICE_ACCOUNT_JSON=<contents of gcp-key.json as a single-line string>
+#   GOOGLE_APPLICATION_CREDENTIALS=/path/to/gcp-key.json  (local dev only)
 
 # Step 4: Create and activate a Python virtual environment
 python -m venv venv
@@ -187,12 +211,11 @@ python agent/main.py
 
 ## Known Limitations & Next Steps
 
-- Ingredient price tool (`ingredient_price_tool`) planned for W4 — will pull MOC/Makro reference prices from PostgreSQL.
-- `calculate_margin` tool — compute true net margin per menu item using invoice and profile data — planned for W4.
-- `simulate_scenario` tool — what-if oil price sensitivity analysis — planned for W4.
-- Multi-agent pattern (Planner → Data Agent + Margin Agent + Recommendation Agent) planned for W4+.
-- RAG: menu cost history as vector store for trend queries planned for W5+.
+- `calculate_margin` tool — compute true net margin per menu item using invoice and profile data — planned next.
+- `simulate_scenario` tool — what-if oil price sensitivity analysis — planned next.
+- Multi-agent pattern (Planner → Data Agent + Margin Agent + Recommendation Agent) — future.
+- GraphRecursionLimit hardening — graceful UI fallback when agent loops exceed `recursion_limit=9` — in progress.
 
 ---
 
-*Last updated: W3 — Bangchak oil price tool, 4 business-rule tools (L1/L3/L4/Scenario Classifier), OCR invoice upload, Data Upload page, Business Profile Settings page, platform channel assets.*
+*Last updated: W4 — app modularized into views/components, RAG vector search tool, ingredient price tool, platform GP lookup tool, 3-step Business Setup stepper, invoice delete UI, Vertex AI auth.*

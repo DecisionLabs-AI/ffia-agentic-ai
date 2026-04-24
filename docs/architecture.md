@@ -1,6 +1,6 @@
 # FFIA — Project Context & Agent Architecture
 
-> Status: **W3 Complete** — LangGraph ReAct agent, OCR invoice upload (Claude Vision), PostgreSQL invoice CRUD, user authentication, and Business Profile Settings page live. Dark sidebar UI shipped.
+> Status: **W4 Active** — App modularized into `app/views/` + `app/components/`. New tools: ingredient price, platform GP lookup, RAG vector search. 3-step Business Setup stepper. Invoice delete UI. Vertex AI auth (service account) replaces API key auth.
 
 ---
 
@@ -72,33 +72,33 @@ This design makes the system easier to test (tools are pure functions), easier t
 ## High-Level Architecture
 
 ```
-User (Streamlit Chat UI — dark sidebar)
+User (Streamlit — dark sidebar)
         │
         ▼
-┌──────────────────────────────────────────────────────────────┐
-│                        app/main.py                           │
-│  Pages: Dashboard │ Data Upload │ Business Profile Settings  │
-│  Auth: FFIA_AUTH_USERS_JSON (PBKDF2 password verification)   │
-│  OCR: app/utils/ocr.py — Claude Vision invoice extraction    │
-└────────────┬──────────────────────────┬──────────────────────┘
-             │ run_agent()              │ data/db.py
-             ▼                          ▼
-┌────────────────────────┐  ┌──────────────────────────────────┐
-│      agent/main.py     │  │           data/db.py             │
-│  LangGraph ReAct Agent │  │  psycopg2 CRUD helpers           │
-│  Gemini 2.5 Flash      │  │  invoices, invoice_items,        │
-│  Thought→Action→Obs    │  │  restaurant_profiles tables      │
-└────────┬───────┬───────┘  └──────────────┬───────────────────┘
-         │       │                          │
-         ▼       ▼                          ▼
-┌──────────────┐ ┌──────────────┐    PostgreSQL (Supabase)
-│postgres_tool │ │ search_tool  │    Row-Level Security (RLS)
-│ SELECT only  │ │ DuckDuckGo   │    per user_id tenant
-│ 50-row cap   │ │ no API key   │
-└──────┬───────┘ └──────────────┘
-       │
-       ▼
-  PostgreSQL (Supabase)
+┌──────────────────────────────────────────────────────────────────────┐
+│  app/main.py  (bootstrap: auth wall, CSS inject, sidebar, router)    │
+│  app/views/dashboard.py   app/views/profile.py   app/views/upload.py │
+│  app/views/chat.py        app/components/layout.py + sidebar.py      │
+│  Auth: FFIA_AUTH_USERS_JSON (PBKDF2)                                 │
+│  OCR:  app/utils/ocr.py — Claude Vision invoice extraction           │
+└────────────┬──────────────────────────────┬─────────────────────────┘
+             │ run_agent()                  │ data/db.py
+             ▼                              ▼
+┌────────────────────────┐   ┌──────────────────────────────────────┐
+│      agent/main.py     │   │            data/db.py                │
+│  LangGraph ReAct Agent │   │  psycopg2 CRUD helpers               │
+│  Gemini 2.5 Flash      │   │  invoices, invoice_items,            │
+│  Vertex AI (SvcAcct)   │   │  restaurant_profiles,                │
+│  Thought→Action→Obs    │   │  ingredient_market_prices,           │
+│  recursion_limit=9     │   │  invoice_embeddings (pgvector)       │
+└──┬──┬──┬──┬──┬──┬──┬───┘  └──────────────┬───────────────────────┘
+   │  │  │  │  │  │  │                       │
+   ▼  ▼  ▼  ▼  ▼  ▼  ▼                       ▼
+postgres_tool          rag_tool         PostgreSQL (Supabase)
+oil_price_tool         search_tool      Row-Level Security (RLS)
+ingredient_price_tool                   per user_id tenant
+platform_gp_lookup_tool                 pgvector extension (RAG)
+business_rules_tool (×4)
 ```
 
 ---
@@ -106,21 +106,25 @@ User (Streamlit Chat UI — dark sidebar)
 ## Components
 
 ### 1. LLM Core
-- **Model**: Gemini 2.5 Flash via `ChatGoogleGenerativeAI` (`langchain-google-genai`)
+- **Model**: Gemini 2.5 Flash via `ChatVertexAI` (`langchain-google-vertexai`)
 - **Framework**: LangGraph `create_react_agent` — ReAct (Reason + Act) loop
 - **Location**: `agent/main.py`
-- **Auth**: `GOOGLE_API_KEY` in `.env` — no service account or gcp-key.json needed
-- **Temperature**: 0.1 (near-deterministic for data analysis)
+- **Auth**: GCP service account — `GCP_SERVICE_ACCOUNT_JSON` (Streamlit Cloud) or `GOOGLE_APPLICATION_CREDENTIALS` (local dev) + `GCP_PROJECT_ID`
+- **Temperature**: 0 (deterministic for data analysis)
+- **Recursion limit**: 9 steps per turn (configurable in `run_agent()` config)
 
 ### 2. Tools
 | Tool | File | Description |
 |---|---|---|
 | `oil_price_tool` | `agent/tools/oil_price_tool.py` | Live diesel/gasohol prices from Bangchak API; Thai and English fuel-name aliases; returns price + effective date |
+| `postgres_tool` | `agent/tools/postgres_tool.py` | SELECT queries against PostgreSQL; RLS enforced via `app.current_user_id` session config |
+| `ingredient_price_tool` | `agent/tools/ingredient_price_tool.py` | Ingredient market price lookup from `ingredient_market_prices` PostgreSQL table |
+| `platform_gp_lookup_tool` | `agent/tools/platform_gp_lookup_tool.py` | Returns gross profit % per delivery platform from the `platform_fee` table |
+| `rag_tool` | `agent/tools/rag_tool.py` | pgvector similarity search over `invoice_embeddings` — retrieves relevant invoice context |
 | `platform_floor_guard_tool` | `agent/tools/business_rules_tool.py` | Rule L1 — platform cost floor check; classifies as HEALTHY/WATCH/WARNING/CRITICAL |
 | `promo_profitability_tool` | `agent/tools/business_rules_tool.py` | Rule L3 — promo viability check; computes minimum viable price + psychological pricing |
 | `cogs_alert_tool` | `agent/tools/business_rules_tool.py` | Rule L4 — COGS impact alert with cuisine-group substitute ingredient map |
 | `scenario_classifier_tool` | `agent/tools/business_rules_tool.py` | Classifies business situation into Scenario 1/2/3 and returns an action plan |
-| `postgres_tool` | `agent/tools/postgres_tool.py` | SELECT queries against PostgreSQL; RLS enforced via `app.current_user_id` session config |
 | `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo — no API key required; fallback for general queries |
 
 **Security guardrails on PostgreSQL tool:**
@@ -144,6 +148,9 @@ User (Streamlit Chat UI — dark sidebar)
   - `invoices` — invoice header records per user
   - `invoice_items` — line items linked to each invoice
   - `restaurant_profiles` — restaurant context and margin thresholds per user
+  - `restaurant_channel_mix` — per-platform revenue share and GP % per user
+  - `ingredient_market_prices` — reference ingredient prices (seeded from CSV)
+  - `invoice_embeddings` — pgvector embeddings of invoice chunks for RAG retrieval
 
 ### 5. Authentication
 - **Source**: `FFIA_AUTH_USERS_JSON` env var — JSON array of users with pre-hashed passwords
@@ -152,14 +159,19 @@ User (Streamlit Chat UI — dark sidebar)
 - `user_id` doubles as the PostgreSQL tenant identifier for RLS
 
 ### 6. User Interface
-- **Framework**: Streamlit (`app/main.py`)
-- **Sidebar**: Dark navy (`#0f172a`) with SVG nav icons, active/inactive CSS key states, bottom-pinned account block
-- **Nav items**:
-  - **Dashboard** — chat agent with reasoning trace
-  - **Data Upload** — OCR invoice ingestion (Claude Vision) → editable form → PostgreSQL save
-  - **Business Profile Settings** — view/edit `restaurant_profiles` (food types, store type, margin thresholds)
-- **Reasoning Transparency**: `st.expander("Agent Reasoning Trace (click to expand)")` — collapsed by default; shows tool name + observation per step
-- **Disclaimer**: CSS `::after` on `[data-testid="stBottom"]` — renders directly below the pinned chat input
+- **Framework**: Streamlit — modularized into views and components
+- **Entry point**: `app/main.py` — bootstrap only (auth wall, CSS injection, sidebar, page router)
+- **Views** (`app/views/`):
+  - `chat.py` — AI Assistant chat with reasoning trace expander and prompt chips
+  - `dashboard.py` — Decision cards, Quick Actions, current-month invoice list
+  - `profile.py` — Business Setup 3-step stepper (profile form → invoice upload → readiness review)
+  - `upload.py` — OCR invoice ingestion (Claude Vision) → editable form → PostgreSQL save + delete
+- **Components** (`app/components/`):
+  - `layout.py` — `_render_page_hero()`, `_render_section_header()`, `_load_logo_b64()`
+  - `sidebar.py` — `_render_sidebar()`, `_render_sidebar_nav_button()`
+- **Styles**: `app/styles/main_css.py` — global CSS theme injected via `st.markdown()`
+- **Sidebar**: Dark navy (`#0f172a`) with active/inactive CSS states, bottom-pinned account block
+- **Reasoning Transparency**: `st.expander` collapsed by default; shows tool name + observation per step
 
 ---
 
@@ -171,17 +183,22 @@ User (Streamlit Chat UI — dark sidebar)
 | `agent/tools/oil_price_tool.py` | Live oil price from Bangchak API — Thai/English aliases, date fields |
 | `agent/tools/business_rules_tool.py` | Business-rule tools: L1 platform floor guard, L3 promo profitability, L4 COGS alert, scenario classifier |
 | `agent/tools/postgres_tool.py` | PostgreSQL SELECT tool for agent — RLS-enforced, 50-row cap |
+| `agent/tools/ingredient_price_tool.py` | Ingredient market price lookup from PostgreSQL reference table |
+| `agent/tools/platform_gp_lookup_tool.py` | Per-platform GP % lookup from `platform_fee` table |
+| `agent/tools/rag_tool.py` | pgvector invoice embedding similarity search |
 | `agent/tools/search_tool.py` | DuckDuckGo web search tool |
 | `agent/prompts/system_prompt.txt` | Agent role, tool guidance, Bangkok/THB context, output format |
-| `app/main.py` | Streamlit UI — Dashboard, Data Upload, and Business Profile Settings pages |
+| `app/main.py` | Streamlit bootstrap — auth wall, CSS injection, DB setup, sidebar render, page router |
+| `app/views/chat.py` | AI Assistant chat page — prompt chips, agent turn, reasoning trace |
+| `app/views/dashboard.py` | Dashboard page — decision cards, Quick Actions, invoice list |
+| `app/views/profile.py` | Business Setup 3-step stepper — profile form, upload, readiness review |
+| `app/views/upload.py` | Data Upload page — OCR ingestion, invoice form, save/delete |
+| `app/components/layout.py` | Shared page hero, section header, logo loader |
+| `app/components/sidebar.py` | Sidebar nav and brand block |
+| `app/styles/main_css.py` | Global CSS theme string |
 | `app/utils/auth.py` | User authentication — PBKDF2 password verification, session helpers |
 | `app/utils/ocr.py` | Claude Vision OCR — extracts invoice fields and line items from uploaded images |
-| `data/db.py` | PostgreSQL helpers — invoice CRUD, restaurant profile upsert/fetch, RLS context setup |
-| `app/assets/ffia_logo_design.png` | Sidebar logo (base64-embedded in HTML) |
-| `app/assets/grab.png` | Grab delivery platform icon |
-| `app/assets/lineman.png` | LINE MAN delivery platform icon |
-| `app/assets/shopeefood.png` | Shopee Food delivery platform icon |
-| `app/assets/walkin.png` | Walk-in channel icon |
+| `data/db.py` | PostgreSQL helpers — invoice CRUD, profile upsert/fetch, RAG schema, RLS context setup |
 | `requirements.txt` | Python dependencies |
 | `.env` | Secrets — never committed (see `.env.example`) |
 
@@ -191,19 +208,23 @@ User (Streamlit Chat UI — dark sidebar)
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `GOOGLE_API_KEY` | Yes | Gemini API key (get from aistudio.google.com) — powers the ReAct agent |
 | `DATABASE_URL` | Yes | PostgreSQL connection URL (`postgresql://user:pass@host:5432/db`) |
 | `FFIA_AUTH_USERS_JSON` | Yes | JSON array of users with `username`, `display_name`, `password_hash` |
-| `GCP_PROJECT_ID` | Yes | GCP project ID — required by Vertex AI for invoice OCR |
-| `GCP_SERVICE_ACCOUNT_JSON` | Yes | Full service account key JSON (single-line string) — used by `app/utils/ocr.py` for Gemini Vision OCR |
-| `TAVILY_API_KEY` | No | Upgrades web search from DuckDuckGo to Tavily automatically |
+| `GCP_PROJECT_ID` | Yes | GCP project ID — required by Vertex AI for both agent LLM and invoice OCR |
+| `GCP_SERVICE_ACCOUNT_JSON` | Yes | Full service account key JSON (single-line string) — used by agent and OCR on Streamlit Cloud |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Local dev | Path to GCP key JSON file — used when `GCP_SERVICE_ACCOUNT_JSON` is not set |
 
 ---
 
 ## run_agent() Contract
 
 ```python
-run_agent(user_message: str, chat_history: list = None) -> dict
+run_agent(
+    user_message: str,
+    chat_history: list = None,
+    callbacks: list = None,
+    current_user_id: str | None = None,
+) -> dict
 ```
 
 Returns:
@@ -223,9 +244,10 @@ Returns:
 
 ## Security Boundaries
 - All secrets loaded from `.env` via `python-dotenv` — never hardcoded
-- No service account JSON key required — auth via `GOOGLE_API_KEY` only
+- GCP service account credentials loaded from `GCP_SERVICE_ACCOUNT_JSON` env var (Streamlit Cloud) or `GOOGLE_APPLICATION_CREDENTIALS` file path (local dev)
 - PostgreSQL tool rejects any non-SELECT SQL at the tool level
 - Query results capped at 50 rows before passing to LLM
+- Row-Level Security enforced at DB layer — `set_postgres_tool_user_id()` / `reset_postgres_tool_user_id()` bracket every agent invocation
 
 ---
 
@@ -236,14 +258,14 @@ Returns:
 | W1 | LangGraph ReAct agent, Gemini 2.5 Flash, DuckDuckGo search tool, dark sidebar UI |
 | W2 | PostgreSQL integration, invoice CRUD (`data/db.py`), RLS tenant isolation, user authentication |
 | W3 | Bangchak oil price tool, 4 business-rule tools (L1/L3/L4/Scenario Classifier), OCR invoice upload (Claude Vision), Data Upload page, Business Profile Settings page, platform channel assets |
+| W4 | App modularized into `app/views/` + `app/components/` + `app/styles/`; ingredient price tool; platform GP lookup tool; RAG vector search tool (`rag_tool.py`); `invoice_embeddings` table with pgvector; 3-step Business Setup stepper; invoice delete UI; Vertex AI service account auth |
 
-## Planned W4+ Enhancements
-- [ ] `ingredient_price_tool` — MOC/Makro reference prices from PostgreSQL
+## Planned Next
 - [ ] `calculate_margin` tool — compute true net margin per menu item using invoice and profile data
 - [ ] `simulate_scenario` tool — what-if oil price sensitivity analysis
+- [ ] `GraphRecursionError` graceful UI fallback — catch in `app/views/chat.py`, surface user-friendly message instead of raw traceback
 - [ ] Multi-agent: Planner → Data Agent + Margin Agent + Recommendation Agent
-- [ ] RAG: Menu cost history as vector store for trend queries
 
 ---
 
-*Last updated: W3 — Bangchak oil price tool, business-rule tools (L1/L3/L4/Scenario Classifier), OCR invoice upload, Data Upload page, Business Profile Settings page, platform channel assets.*
+*Last updated: W4 — app modularized into views/components, RAG tool, ingredient price tool, platform GP lookup, 3-step stepper, invoice delete, Vertex AI auth.*
