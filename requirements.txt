@@ -15,6 +15,7 @@ google-cloud-aiplatform>=1.60.0
 
 # --- Database: PostgreSQL ---
 psycopg2-binary>=2.9.0
+psycopg[binary]>=3.1.0
 langchain-postgres>=0.0.12
 pgvector>=0.3.0
 

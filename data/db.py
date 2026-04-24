@@ -241,6 +241,102 @@ def create_tables():
         conn.commit()
 
 
+# Step 4 RAG: Ensure RAG schema — vector extension + invoice_embeddings table
+def ensure_rag_schema() -> None:
+    """Create pgvector extension and invoice_embeddings table if they do not exist.
+
+    Standalone — not wired into create_tables() startup.
+    Call once during RAG pipeline setup before the first embedding write.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            # Step 1: Enable pgvector extension (requires superuser or pg_extension_owner)
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+            # Step 2: Create embedding store
+            # vector(768) matches VertexAI text-embedding-004 — change dimension here
+            # if switching to a different embedding model
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS invoice_embeddings (
+                    id          SERIAL PRIMARY KEY,
+                    user_id     TEXT        NOT NULL,
+                    invoice_id  INTEGER     REFERENCES invoices(id) ON DELETE CASCADE,
+                    item_id     INTEGER     REFERENCES invoice_items(id) ON DELETE CASCADE,
+                    chunk_text  TEXT        NOT NULL,
+                    embedding   vector(768),
+                    metadata    JSONB,
+                    created_at  TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
+            # Step 3: HNSW index for approximate nearest-neighbour search (cosine distance)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_invoice_embeddings_hnsw
+                ON invoice_embeddings USING hnsw (embedding vector_cosine_ops)
+            """)
+
+            # Step 4: B-tree index for fast per-tenant filtering
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_invoice_embeddings_user_id
+                ON invoice_embeddings (user_id)
+            """)
+        conn.commit()
+
+
+# Step 4 RAG-2: Fetch invoice line items as text chunks ready for embedding
+def fetch_invoice_chunks_for_embedding(user_id: str) -> list[dict]:
+    """Return all invoice line items for the tenant formatted as embedding-ready text chunks.
+
+    Returns:
+        List of dicts with keys: chunk_text, item_id, invoice_id,
+        vendor, invoice_date, user_id
+    """
+    # Step 1: Validate and normalise tenant identifier
+    normalized_user_id = _require_user_id(user_id)
+
+    # Step 2: JOIN invoices + invoice_items — filter by user_id for tenant isolation
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    ii.id           AS item_id,
+                    ii.invoice_id,
+                    ii.name,
+                    ii.qty,
+                    ii.unit_price,
+                    ii.total,
+                    inv.vendor,
+                    inv.invoice_date,
+                    inv.user_id     AS user_id
+                FROM invoice_items ii
+                JOIN invoices inv ON ii.invoice_id = inv.id
+                WHERE inv.user_id = %s
+                ORDER BY inv.invoice_date DESC, ii.id ASC
+                """,
+                (normalized_user_id,),
+            )
+            rows = cur.fetchall()
+
+    # Step 3: Build chunk text per line item using the standard invoice chunk format
+    chunks = []
+    for row in rows:
+        chunk_text = (
+            f"Invoice from {row['vendor']} on {row['invoice_date']}: "
+            f"{row['name']}, quantity {row['qty']}, "
+            f"unit price {row['unit_price']} THB, total {row['total']} THB."
+        )
+        chunks.append({
+            "chunk_text":   chunk_text,
+            "item_id":      row["item_id"],
+            "invoice_id":   row["invoice_id"],
+            "vendor":       row["vendor"],
+            "invoice_date": row["invoice_date"],
+            "user_id":      row["user_id"],
+        })
+    return chunks
+
+
 # Step 5: Duplicate check — used by the UI before saving
 def invoice_exists(user_id: str, invoice_no: str) -> bool:
     """Return True if an invoice with this invoice_no already exists for the current user."""

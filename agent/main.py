@@ -26,6 +26,7 @@ from langchain_google_vertexai import ChatVertexAI
 from google.oauth2 import service_account
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
+from langgraph.errors import GraphRecursionError
 
 # Step 4: Import tools built in agent/tools/
 from agent.tools.postgres_tool import (
@@ -159,6 +160,80 @@ _PROFILE_QUESTION_PATTERN = re.compile(
 def _is_profile_question(user_message: str) -> bool:
     """Return True when the question requires restaurant profile context."""
     return bool(_PROFILE_QUESTION_PATTERN.search(user_message))
+
+
+_PROMO_QUESTION_PATTERN = re.compile(
+    r"(โปร|โปรโมชั่น|ส่วนลด|ลดราคา|discount|promo|promotion|flash sale|price cut)",
+    re.IGNORECASE,
+)
+_PROMO_DISCOUNT_VALUE_PATTERN = re.compile(
+    r"(?:(?:ลด|ส่วนลด|discount|promo(?:tion)?|price cut)[^0-9]{0,15}\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)?)"
+    r"|(?:\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)\s*(?:ส่วนลด|discount|off|ลด))",
+    re.IGNORECASE,
+)
+_PROMO_PRICE_VALUE_PATTERN = re.compile(
+    r"(?:ราคา|ขาย|price|selling|menu price|gross_revenue)[^0-9]{0,15}\d+(?:\.\d+)?\s*(?:บาท|baht|฿)?",
+    re.IGNORECASE,
+)
+_PROMO_COST_OR_MARGIN_PATTERN = re.compile(
+    r"(?:ต้นทุน|cost|cogs|gp|margin|มาร์จิ้น|กำไรขั้นต้น|กำไรสุทธิ)[^0-9]{0,15}\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)?",
+    re.IGNORECASE,
+)
+
+
+def _is_thai_message(text: str) -> bool:
+    """Return True when the message contains Thai characters."""
+    return bool(re.search(r"[ก-๙]", text or ""))
+
+
+def _build_promo_missing_inputs_reply(user_message: str) -> str | None:
+    """Return a minimal follow-up question when promo viability inputs are insufficient."""
+    if not _PROMO_QUESTION_PATTERN.search(user_message or ""):
+        return None
+
+    # Safety: evaluate promo inputs from the current user message only.
+    context_text = str(user_message or "")
+    has_discount = bool(_PROMO_DISCOUNT_VALUE_PATTERN.search(context_text))
+    has_price = bool(_PROMO_PRICE_VALUE_PATTERN.search(context_text))
+    has_cost_or_margin = bool(_PROMO_COST_OR_MARGIN_PATTERN.search(context_text))
+
+    missing: list[str] = []
+    if not has_discount:
+        missing.append("discount")
+    if not has_price:
+        missing.append("price")
+    if not has_cost_or_margin:
+        missing.append("cost_or_margin")
+
+    if not missing:
+        return None
+
+    ask_keys = missing[:2]
+    is_thai = _is_thai_message(user_message)
+    if is_thai:
+        label_map = {
+            "discount": "จำนวนส่วนลด (บาทหรือ %)",
+            "price": "ราคาขายก่อนลด",
+            "cost_or_margin": "ต้นทุนต่อจานหรือ GP% ปัจจุบัน",
+        }
+        labels = [label_map[k] for k in ask_keys]
+        joined = f"{labels[0]} และ {labels[1]}" if len(labels) == 2 else labels[0]
+        return (
+            f"เพื่อเช็กว่าโปรนี้ยังคุ้มไหม รบกวนระบุ {joined} "
+            "แล้วฉันจะสรุปให้ทันที"
+        )
+
+    label_map = {
+        "discount": "discount amount (THB or %)",
+        "price": "pre-discount selling price",
+        "cost_or_margin": "cost per dish or current GP%",
+    }
+    labels = [label_map[k] for k in ask_keys]
+    joined = f"{labels[0]} and {labels[1]}" if len(labels) == 2 else labels[0]
+    return (
+        f"To check promo viability, please share {joined}. "
+        "I will conclude right away."
+    )
 
 
 def _build_profile_context_message(profile: dict) -> str:
@@ -314,6 +389,11 @@ def run_agent(
           "output"             — final answer as a clean plain string
           "intermediate_steps" — list of (tool_name: str, observation: str) tuples
     """
+    # Step 10a: Strict promo stop rule — ask only minimum missing inputs and stop early.
+    promo_missing_reply = _build_promo_missing_inputs_reply(user_message)
+    if promo_missing_reply:
+        return {"output": promo_missing_reply, "intermediate_steps": []}
+
     latest_invoice = None
     invoice_context_error = ""
     invoice_context_requested = _should_inject_latest_invoice(user_message)
@@ -352,10 +432,21 @@ def run_agent(
     )
     user_token = set_postgres_tool_user_id(current_user_id)
     try:
-        result = _get_agent().invoke(
-            {"messages": agent_messages},
-            config={"callbacks": callbacks or [], "recursion_limit": 9}
-        )
+        try:
+            result = _get_agent().invoke(
+                {"messages": agent_messages},
+                config={"callbacks": callbacks or [], "recursion_limit": 9}
+            )
+        except GraphRecursionError:
+            fallback_output = (
+                "ฉันยังสรุปคำตอบไม่จบในรอบนี้ ลองระบุข้อมูลเพิ่มอีกนิด หรือถามให้แคบลงได้เลย"
+                if _is_thai_message(user_message)
+                else (
+                    "I couldn't finish the reasoning in this run. "
+                    "Please narrow the question or provide a bit more detail."
+                )
+            )
+            return {"output": fallback_output, "intermediate_steps": []}
     finally:
         reset_postgres_tool_user_id(user_token)
 
