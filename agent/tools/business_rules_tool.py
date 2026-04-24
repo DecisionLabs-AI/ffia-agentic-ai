@@ -45,6 +45,32 @@ def _round_to_magic_number(price: float) -> int:
     return int(price)  # above defined magic number range
 
 
+def _safe_percent(numerator: float, denominator: float) -> float | None:
+    """Return percentage value or None when denominator is invalid."""
+    try:
+        if denominator is None or denominator <= 0:
+            return None
+        return numerator / denominator * 100
+    except TypeError:
+        return None
+
+
+def _compute_net_margin(
+    selling_price: float,
+    platform_fee: float,
+    cogs: float,
+) -> tuple[float, float | None]:
+    """Compute unified net margin in THB and %.
+
+    Core metric (docs/business_rules.md):
+      net_margin_baht = selling_price - platform_fee - cogs
+      net_margin_pct  = net_margin_baht / selling_price * 100
+    """
+    net_margin_baht = selling_price - platform_fee - cogs
+    net_margin_pct = _safe_percent(net_margin_baht, selling_price)
+    return net_margin_baht, net_margin_pct
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 4: Tool — Platform Cost Floor Guard (Rule L1)
 # Source: docs/business_rules.md — Rule L1
@@ -81,7 +107,9 @@ def platform_floor_guard_tool(
     # Step 4b: Apply L1 formulas (docs/business_rules.md — Rule L1, Formula)
     gp_commission = gross_revenue * gp_pct
     platform_floor = gross_revenue - gp_commission - fuel_surcharge - promo_discount
-    platform_floor_pct = platform_floor / gross_revenue * 100
+    platform_floor_pct = _safe_percent(platform_floor, gross_revenue)
+    if platform_floor_pct is None:
+        return "Error: gross_revenue must be greater than 0."
 
     # Step 4c: Classify by threshold and map to recommended action
     # (docs/business_rules.md — Rule L1, Decision thresholds + Recommended action)
@@ -103,7 +131,9 @@ def platform_floor_guard_tool(
     icon = status_icons[status]
     return (
         f"{icon} Platform Floor: {status}\n\n"
-        f"📊 Floor Usage: {platform_floor_pct:.1f}% of gross revenue\n\n"
+        f"📊 Platform floor: {platform_floor_pct:.1f}% "
+        f"(฿{platform_floor:.2f} from selling price ฿{gross_revenue:.2f})\n\n"
+        f"ℹ️ Profitability view: use net margin % as final decision metric.\n\n"
         f"What to do:\n"
         f"• {action}"
     )
@@ -163,29 +193,44 @@ def promo_profitability_tool(
     # (docs/business_rules.md — Rule L3, Pricing rule)
     suggested_price = _round_to_magic_number(min_price)
 
-    # Step 5d: Check if the post-discount revenue covers min_price
-    # MVP assumption: promo_viable = revenue after discount >= min_price
+    # Step 5d: Compute post-promo margin (percent-first decision basis)
     effective_revenue = gross_revenue - promo_discount
-    promo_viable = effective_revenue >= min_price
+    platform_fee = effective_revenue * gp_pct
+    net_margin_baht, net_margin_pct = _compute_net_margin(
+        selling_price=effective_revenue,
+        platform_fee=platform_fee,
+        cogs=total_cost,
+    )
+    target_margin_pct = target_margin * 100
+    promo_viable = net_margin_pct is not None and net_margin_pct >= target_margin_pct
+
+    if net_margin_pct is None:
+        margin_line = f"Post-promo margin: N/A (฿{net_margin_baht:.2f} per dish)"
+    else:
+        margin_line = f"Post-promo margin: {net_margin_pct:.1f}% (฿{net_margin_baht:.2f} per dish)"
 
     # Step 5e: Build reason and action bullets for emoji-prefixed decision format
     viable_icon = "✅" if promo_viable else "❌"
     if not promo_viable:
-        reason = (
-            f"Post-discount revenue ({effective_revenue:.2f} THB) "
-            f"is below minimum viable price ({min_price:.2f} THB)."
-        )
+        if net_margin_pct is None:
+            reason = f"{margin_line}. Post-promo selling price must be greater than 0."
+        else:
+            reason = (
+                f"{margin_line}, below target {target_margin_pct:.1f}%."
+            )
         what_to_do = "• Avoid this promotion.\n• Use a bundle strategy instead."
     else:
         reason = (
-            f"Post-discount revenue ({effective_revenue:.2f} THB) "
-            "covers the minimum viable price."
+            f"{margin_line}, above target {target_margin_pct:.1f}%."
         )
         what_to_do = f"• Proceed with the promotion.\n• Set selling price at {suggested_price} THB."
 
     # Step 5f: Return emoji-prefixed decision format
     return (
         f"{viable_icon} Promo Viable: {'YES' if promo_viable else 'NO'}\n\n"
+        f"📊 {margin_line}\n\n"
+        f"🔎 Threshold: target margin {target_margin_pct:.1f}% "
+        f"(secondary check: min viable price {min_price:.2f} THB)\n\n"
         f"💰 Recommended Price: {suggested_price} THB\n\n"
         f"Reason:\n"
         f"• {reason}\n\n"
@@ -278,9 +323,11 @@ def cogs_alert_tool(
     alert_icons = {"OK": "✅", "MONITOR": "✅", "ALERT": "⚠️", "URGENT": "❌"}
     alert_icon = alert_icons.get(alert, "")
     impact_pct = cogs_delta * 100
+    impact_sign = "+" if impact_pct >= 0 else ""
+    impact_line = f"{impact_sign}{impact_pct:.1f}% ({impact_sign}฿{impact_pct:.1f} per ฿100 sales)"
     return (
         f"{alert_icon} COGS Alert: {alert}\n\n"
-        f"📈 Cost Impact: +{impact_pct:.1f}% increase\n\n"
+        f"📈 Cost Impact: {impact_line}\n\n"
         f"What to do:\n"
         f"• {alert_action}"
         f"{substitute_bullet}"

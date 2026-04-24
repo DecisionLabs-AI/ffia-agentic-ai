@@ -12,6 +12,30 @@ The rules below are based on five logic groups:
 
 ---
 
+## Core Margin Metric
+
+FFIA uses one unified net-margin definition across all rules:
+
+* `net_margin_baht = selling_price - platform_fee - cogs`
+* `net_margin_pct = net_margin_baht / selling_price * 100`
+
+Interpretation standard:
+
+* `%` is the primary metric for trigger, ranking, comparison, and prioritization
+* `฿` must always be displayed alongside `%` for owner context
+* `฿` is secondary explanatory context, not the primary decision metric
+
+---
+
+## Percent-First Decision Policy
+
+* FFIA must use margin `%` as the primary basis for ranking menus/platforms and triggering alerts
+* FFIA must not rank menus/platforms by absolute `฿` margin alone
+* High-price menus can look falsely better in `฿`, so `%` must lead the decision
+* Absolute `฿` values are still shown for owner understanding and communication
+
+---
+
 ## Rule L1: Platform Cost Floor Guard
 
 ### Purpose
@@ -34,6 +58,12 @@ Check whether each delivery order still has enough money left before ingredient 
 
 * `platform_floor = gross_revenue - gp_commission - fuel_surcharge - promo_discount`
 * `platform_floor_pct = platform_floor / gross_revenue * 100`
+
+### Interpretation note
+
+* `platform_floor_pct` is a pre-COGS headroom metric
+* It is not the same as final profitability
+* Use `net_margin_pct` for final profitability interpretation and decision
 
 ### Decision thresholds
 
@@ -80,6 +110,12 @@ Trigger rebalancing when:
 * `rebalance_trigger = margin_gap > 5 AND consecutive_days >= 3 AND volume_capacity_ok = true`
 * `monthly_gain_est = margin_gap * avg_order_value * avg_daily_orders * 30`
 
+### Comparison scope
+
+* Use `platform_floor_pct` for cross-platform headroom comparison
+* Use `net_margin_pct` for final profitability comparison/ranking across options
+* Do not rank by absolute `฿` margin alone
+
 ### Decision thresholds
 
 * `gap > 5%` for 3 consecutive days → move promo budget to the better-margin platform
@@ -111,6 +147,8 @@ Check whether a promotion or campaign is financially viable before the restauran
 * `required_volume_increase = (break_even_volume / avg_daily_orders_30d) - 1`
 * `campaign_viable = required_volume_increase <= 0.30`
 * `min_price = (cogs + fuel + packaging + fixed_alloc) / (1 - gp_pct - target_margin)`
+* `post_promo_margin_baht = post_promo_selling_price - platform_fee - cogs`
+* `post_promo_margin_pct = post_promo_margin_baht / post_promo_selling_price * 100`
 
 ### Pricing rule
 
@@ -129,6 +167,7 @@ Suggested price should be rounded up to the nearest acceptable psychological pri
 * viable but required volume increase is too high → show break-even volume clearly
 * if first 2-hour volume pace is below expectation → recommend stopping or adjusting the promo
 * `campaign_viable = false` → recommend passing the campaign and explain why with numbers
+* Promo go/no-go must be judged primarily by `post_promo_margin_pct`; show `post_promo_margin_baht` as secondary context
 
 ### Business meaning
 
@@ -174,6 +213,7 @@ If pork market price increases 20%, but 60% of old stock remains:
 ### COGS delta
 
 * `cogs_delta = effective_cogs_pct - cogs_baseline_30d`
+* Rank ingredient shocks by percentage impact on menu economics first, then explain with absolute `฿` delta context
 
 ### Bundle logic
 
@@ -233,6 +273,8 @@ Adjust delivery radius based on real-time margin pressure from diesel price, tra
 * `break_even_km = (platform_floor - cogs_estimate_avg) / effective_cost_per_km`
 * `compound_trigger = traffic_index > 0.70 AND diesel_price > diesel_baseline × 1.15`
 * `rain_surge_pct = round(fuel_surcharge_delta / (1 - gp_pct) / 0.05) × 5`
+* `net_margin_baht = selling_price - platform_fee - cogs - delivery_cost`
+* `net_margin_pct = net_margin_baht / selling_price * 100`
 
 ### Example
 
@@ -243,13 +285,14 @@ If surcharge increases by ฿8 and GP = 28%:
 
 ### Decision thresholds
 
-* `net_margin > 10%` → keep current radius or expand if demand is high
-* `net_margin 7–10%` → monitor, no change
-* `net_margin 5–7%` → recommend reducing radius by 1 km
-* `net_margin 2–5%` → recommend reducing radius by 2 km, with confirmation
-* `net_margin < 2%` → reduce radius automatically to break-even km, pending approval
+* `net_margin_pct > 10%` → keep current radius or expand if demand is high
+* `net_margin_pct 7–10%` → monitor, no change
+* `net_margin_pct 5–7%` → recommend reducing radius by 1 km
+* `net_margin_pct 2–5%` → recommend reducing radius by 2 km, with confirmation
+* `net_margin_pct < 2%` → reduce radius automatically to break-even km, pending approval
 * `compound_trigger = true` → temporarily shrink radius during peak hours
 * `rain_probability > 70%` → recommend Rain Surge Pricing
+* Use absolute `net_margin_baht` as supporting evidence only
 
 ### Business meaning
 
@@ -288,6 +331,16 @@ The system may classify results using the following labels:
 * CRITICAL
 
 These labels should be shown with clear business explanations, not only raw numbers.
+
+---
+
+## Global Interpretation Rule
+
+For all FFIA margin decisions:
+
+* `%` is the primary decision metric
+* `฿` is always displayed alongside as business context
+* If percentage interpretation conflicts with absolute `฿` impression, percentage-based decision logic wins
 
 ---
 

@@ -167,8 +167,8 @@ _PROMO_QUESTION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _PROMO_DISCOUNT_VALUE_PATTERN = re.compile(
-    r"(?:(?:ลด|ส่วนลด|discount|promo(?:tion)?|price cut)[^0-9]{0,15}\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)?)"
-    r"|(?:\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)\s*(?:ส่วนลด|discount|off|ลด))",
+    r"(?:(?:ลด|ส่วนลด|discount|promo(?:tion)?|flash\s*sale|price cut|โปร(?![ก-๙A-Za-z])|โปรโมชั่น)[^0-9]{0,15}\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)?)"
+    r"|(?:\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)\s*(?:ส่วนลด|discount|promo(?:tion)?|off|ลด|flash\s*sale|โปร(?![ก-๙A-Za-z])|โปรโมชั่น))",
     re.IGNORECASE,
 )
 _PROMO_PRICE_VALUE_PATTERN = re.compile(
