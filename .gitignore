@@ -6,6 +6,7 @@
 # --- Secrets & Environment Variables ---
 # CRITICAL: .env contains real API keys — never commit this file
 .env
+.env.*
 .env.local
 .env.*.local
 
@@ -17,6 +18,8 @@
 *_credentials.json
 *-service-account.json
 gcp-key.json
+**/gcp-key.json
+*.pem
 
 # --- Python ---
 # Exclude compiled bytecode and virtual environments
@@ -36,6 +39,7 @@ build/
 # --- Node.js ---
 # Exclude installed packages (use package.json to reinstall)
 node_modules/
+.next/
 npm-debug.log*
 yarn-error.log*
 .npm/

@@ -194,6 +194,56 @@ streamlit run app/main.py
 python agent/main.py
 ```
 
+## Next.js + FastAPI Migration Sandbox
+
+This sandbox path replaces the Streamlit UI with a Next.js frontend while keeping the existing Python agent, tools, business rules, and database helpers behind a thin FastAPI wrapper.
+
+### Backend
+
+```bash
+cd agentic-ai-mcp
+cp .env.example .env
+pip install -r requirements.txt
+uvicorn api.main:app --reload --port 8000
+```
+
+Health check:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok","service":"ffia-api"}
+```
+
+Sandbox endpoints:
+
+- `GET /health`
+- `POST /chat`
+- `GET /dashboard-summary`
+
+The unauthenticated dashboard wrapper uses `FFIA_DEMO_USER_ID` when no `user_id` query parameter is supplied. Missing database, oil price, or profile data returns `null` or empty arrays instead of crashing the dashboard.
+
+### Frontend
+
+```bash
+cd agentic-ai-mcp/frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Local URLs:
+
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8000`
+- Health: `http://localhost:8000/health`
+
+Do not commit `.env`, `.env.local`, `gcp-key.json`, service account keys, or other secrets.
+
 ---
 
 ## Vibe-Coding Tools Used
