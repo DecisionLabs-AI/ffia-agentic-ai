@@ -94,6 +94,7 @@ def _get_cached_top_items(user_id: str, limit: int = 5) -> list[dict]:
                     FROM invoice_items ii
                     JOIN invoices inv ON ii.invoice_id = inv.id
                     WHERE ii.user_id = %s
+                      AND (ii.excluded_from_analysis IS NOT TRUE)
                       AND DATE_TRUNC('month', inv.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
                     GROUP BY ii.name
                     ORDER BY total_spend DESC

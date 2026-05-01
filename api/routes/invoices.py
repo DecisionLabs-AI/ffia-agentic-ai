@@ -8,10 +8,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # Step 1: Shared models ─────────────────────────────────────────────────────
@@ -30,6 +33,12 @@ class _SaveRequest(BaseModel):
     invoice_date: str
     total_amount: float
     items: list[_Item] = Field(default_factory=list)
+
+
+class _ExcludeRequest(BaseModel):
+    user_id: str
+    excluded: bool
+    reason: str | None = None
 
 
 # Step 2: Adapter — same interface extract_invoice_data() expects
@@ -77,23 +86,40 @@ def current_month_invoices(user_id: str):
 # Step 4: GET /invoices/{invoice_id}/items?user_id=... ─────────────────────
 @router.get("/invoices/{invoice_id}/items")
 def invoice_items(invoice_id: int, user_id: str):
-    if not str(user_id or "").strip():
+    uid = str(user_id or "").strip()
+    if not uid:
         return []
     try:
         from data.db import fetch_invoice_items  # type: ignore[import]
 
-        rows = fetch_invoice_items(invoice_id, user_id)
+        rows = fetch_invoice_items(invoice_id, uid)
+        logger.info(
+            "GET /invoices/%s/items user_id=%s -> %d row(s)",
+            invoice_id,
+            uid,
+            len(rows),
+        )
         return [
             {
-                # db.py aliases `name AS item_name` — support both key names
+                "item_id": r.get("item_id"),
+                "item_name": r.get("item_name") or r.get("name", ""),
+                # Keep the existing frontend shape while also returning item_name.
                 "name": r.get("item_name") or r.get("name", ""),
                 "qty": float(r.get("qty", 0)),
                 "unit_price": float(r.get("unit_price", 0)),
                 "total": float(r.get("total", 0)),
+                "excluded_from_analysis": bool(r.get("excluded_from_analysis", False)),
+                "excluded_reason": r.get("excluded_reason"),
             }
             for r in rows
         ]
-    except Exception:
+    except Exception as exc:
+        logger.exception(
+            "GET /invoices/%s/items user_id=%s failed: %s",
+            invoice_id,
+            uid,
+            exc,
+        )
         return []
 
 
@@ -170,6 +196,43 @@ def save_invoice_endpoint(body: _SaveRequest):
     except Exception as exc:
         return {"ok": False, "error": str(exc), "invoice_id": None,
                 "invoice_no": inv_no, "item_count": 0, "total": 0.0}
+
+
+# Step 7a: PATCH /invoices/items/{item_id}/exclude — soft-exclude a line item.
+# Must be declared before /invoices/{invoice_id} so "items" is not parsed as an id.
+@router.patch("/invoices/items/{item_id}/exclude")
+def toggle_exclusion_endpoint(item_id: int, body: _ExcludeRequest):
+    uid = str(body.user_id or "").strip()
+    if not uid:
+        return {"ok": False, "error": "Missing user_id", "item": None}
+    try:
+        from data.db import toggle_item_exclusion  # type: ignore[import]
+
+        updated = toggle_item_exclusion(item_id, uid, body.excluded, body.reason)
+        if not updated:
+            return {"ok": False, "error": "Item not found or access denied.", "item": None}
+        return {
+            "ok": True,
+            "error": "",
+            "item": {
+                "item_id": updated.get("item_id"),
+                "item_name": updated.get("item_name") or updated.get("name", ""),
+                "name": updated.get("item_name") or updated.get("name", ""),
+                "qty": float(updated.get("qty", 0)),
+                "unit_price": float(updated.get("unit_price", 0)),
+                "total": float(updated.get("total", 0)),
+                "excluded_from_analysis": bool(updated.get("excluded_from_analysis", False)),
+                "excluded_reason": updated.get("excluded_reason"),
+            },
+        }
+    except Exception as exc:
+        logger.exception(
+            "PATCH /invoices/items/%s/exclude user_id=%s failed: %s",
+            item_id,
+            uid,
+            exc,
+        )
+        return {"ok": False, "error": str(exc), "item": None}
 
 
 # Step 7: DELETE /invoices/{invoice_id}?user_id=... ─────────────────────────

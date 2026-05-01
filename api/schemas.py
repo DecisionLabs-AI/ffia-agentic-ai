@@ -32,10 +32,14 @@ class MeResponse(BaseModel):
 # ── Invoice / Upload ─────────────────────────────────────────────────────────
 
 class InvoiceItem(BaseModel):
+    item_id: int | None = None
+    item_name: str | None = None
     name: str
     qty: float
     unit_price: float
     total: float
+    excluded_from_analysis: bool = False
+    excluded_reason: str | None = None
 
 
 class InvoiceResponse(BaseModel):
@@ -184,6 +188,7 @@ class OilPriceSnapshot(BaseModel):
 class ProfileSnapshot(BaseModel):
     restaurant_name: str | None = None
     restaurant_type: str | None = None
+    store_type: str | None = None
     main_platform: str | None = None
 
 

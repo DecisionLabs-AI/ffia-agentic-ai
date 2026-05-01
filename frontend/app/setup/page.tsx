@@ -56,11 +56,14 @@ export default function SetupPage() {
   const [saveOk,     setSaveOk    ] = useState(false);
   const [loadError,  setLoadError ] = useState("");
 
-  // Step 4: Load existing data on mount
+  // Step 4: Load existing data on mount; honour ?step=upload deep-link
   useEffect(() => {
     const user = getCurrentUser();
     if (!user) { window.location.href = "/login"; return; }
     setUserId(user.user_id);
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("step") === "upload") setStep(4);
 
     (async () => {
       setLoading(true);

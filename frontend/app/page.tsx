@@ -11,9 +11,24 @@ const quickQuestions = [
 ];
 
 const steps = [
-  { title: "ตั้งค่าร้าน", text: "ใส่ประเภทร้าน ช่องทางขาย และเป้ากำไรที่ต้องการ" },
-  { title: "อัปโหลดใบเสร็จ", text: "รวมต้นทุนวัตถุดิบจริงให้ FFIA ใช้วิเคราะห์" },
-  { title: "ถาม FFIA", text: "ถามเรื่องราคา โปรโมชัน น้ำมัน และมาร์จิ้นแบบตรงจุด" },
+  {
+    title: "ตั้งค่าร้าน",
+    text: "ใส่ประเภทร้าน ช่องทางขาย และเป้ากำไรที่ต้องการ",
+    href: "/setup",
+    cta: "ไปตั้งค่าร้าน",
+  },
+  {
+    title: "อัปโหลดใบเสร็จ",
+    text: "รวมต้นทุนวัตถุดิบจริงให้ FFIA ใช้วิเคราะห์",
+    href: "/setup?step=upload",
+    cta: "อัปโหลดใบเสร็จ",
+  },
+  {
+    title: "ถาม FFIA",
+    text: "ถามเรื่องราคา โปรโมชัน น้ำมัน และมาร์จิ้นแบบตรงจุด",
+    href: "/chat",
+    cta: "ถาม FFIA ตอนนี้",
+  },
 ];
 
 export default function Home() {
@@ -67,13 +82,22 @@ export default function Home() {
 
         <div className="mt-10 grid gap-4 md:grid-cols-3">
           {steps.map((step, index) => (
-            <div key={step.title} className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm">
+            <Link
+              key={step.title}
+              href={step.href}
+              className="group flex flex-col rounded-2xl border border-orange-100 bg-white p-5 shadow-sm transition hover:border-orange-300 hover:shadow-md"
+            >
               <div className="grid h-10 w-10 place-items-center rounded-xl bg-orange-100 text-sm font-black text-orange-700">
                 {index + 1}
               </div>
               <h2 className="mt-4 text-lg font-black text-slate-950">{step.title}</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">{step.text}</p>
-            </div>
+              <div className="mt-4">
+                <span className="inline-block rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white transition group-hover:bg-orange-700">
+                  {step.cta}
+                </span>
+              </div>
+            </Link>
           ))}
         </div>
 

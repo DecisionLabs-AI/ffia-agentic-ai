@@ -168,10 +168,12 @@ def create_tables():
 
             # Step 4h: Backfill any columns that may be missing from older table versions
             for _col, _def in [
-                ("name",       "TEXT NOT NULL DEFAULT ''"),
-                ("qty",        "NUMERIC(10, 3) NOT NULL DEFAULT 0"),
-                ("unit_price", "NUMERIC(12, 2) NOT NULL DEFAULT 0"),
-                ("total",      "NUMERIC(12, 2) NOT NULL DEFAULT 0"),
+                ("name",                    "TEXT NOT NULL DEFAULT ''"),
+                ("qty",                     "NUMERIC(10, 3) NOT NULL DEFAULT 0"),
+                ("unit_price",              "NUMERIC(12, 2) NOT NULL DEFAULT 0"),
+                ("total",                   "NUMERIC(12, 2) NOT NULL DEFAULT 0"),
+                ("excluded_from_analysis",  "BOOLEAN NOT NULL DEFAULT FALSE"),
+                ("excluded_reason",         "TEXT"),
             ]:
                 cur.execute(f"""
                     ALTER TABLE invoice_items
@@ -334,6 +336,7 @@ def fetch_invoice_chunks_for_embedding(user_id: str) -> list[dict]:
                 FROM invoice_items ii
                 JOIN invoices inv ON ii.invoice_id = inv.id
                 WHERE inv.user_id = %s
+                  AND (ii.excluded_from_analysis IS NOT TRUE)
                 ORDER BY inv.invoice_date DESC, ii.id ASC
                 """,
                 (normalized_user_id,),
@@ -530,14 +533,21 @@ def fetch_invoice_items(invoice_id: int, user_id: str) -> list[dict]:
     to match the display requirement.
 
     Returns:
-        List of dicts with keys: item_name, qty, unit_price, total
+        List of dicts with keys: item_id, item_name, qty, unit_price, total,
+        excluded_from_analysis, excluded_reason
     """
     normalized_user_id = _require_user_id(user_id)
     with get_connection(normalized_user_id) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT name AS item_name, qty, unit_price, total
+                SELECT id AS item_id,
+                       name AS item_name,
+                       qty,
+                       unit_price,
+                       total,
+                       excluded_from_analysis,
+                       excluded_reason
                 FROM invoice_items
                 WHERE invoice_id = %s AND user_id = %s
                 ORDER BY id ASC
@@ -563,15 +573,65 @@ def delete_invoice(invoice_id: int, user_id: str) -> bool:
             return deleted
 
 
+# Step 10b-2: Soft-exclude a single line item — does not delete invoice_items rows
+def toggle_item_exclusion(
+    item_id: int,
+    user_id: str,
+    excluded: bool,
+    reason: str | None = None,
+) -> dict | None:
+    """Set exclude flags after verifying the parent invoice belongs to user_id."""
+    normalized_user_id = _require_user_id(user_id)
+    excluded_reason = reason if excluded else None
+    with get_connection(normalized_user_id) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE invoice_items AS ii
+                SET excluded_from_analysis = %s,
+                    excluded_reason = %s
+                FROM invoices AS inv
+                WHERE ii.id = %s
+                  AND ii.invoice_id = inv.id
+                  AND ii.user_id = %s
+                  AND inv.user_id = %s
+                RETURNING ii.id AS item_id,
+                          ii.name AS item_name,
+                          ii.qty,
+                          ii.unit_price,
+                          ii.total,
+                          ii.excluded_from_analysis,
+                          ii.excluded_reason
+                """,
+                (
+                    excluded,
+                    excluded_reason,
+                    item_id,
+                    normalized_user_id,
+                    normalized_user_id,
+                ),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            conn.commit()
+            return dict(row)
+
+
 # Step 10c: Count all line items for a user — used by dashboard decision card
 def count_invoice_items(user_id: str) -> int:
 
-    """Return total count of invoice line items stored for this user."""
+    """Return total count of analysis-included invoice line items for this user."""
     normalized_user_id = _require_user_id(user_id)
     with get_connection(normalized_user_id) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(*) FROM invoice_items WHERE user_id = %s",
+                """
+                SELECT COUNT(*)
+                FROM invoice_items
+                WHERE user_id = %s
+                  AND (excluded_from_analysis IS NOT TRUE)
+                """,
                 (normalized_user_id,),
             )
             return cur.fetchone()[0]

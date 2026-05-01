@@ -25,9 +25,21 @@ def _empty_profile() -> dict[str, str | None]:
 
 
 def _fetch_oil_price() -> dict[str, Any]:
-    # Do not import the LangGraph agent or make external HTTP calls here.
-    # Chat can still use the real oil-price tool lazily at query time.
-    return {"diesel": None, "source": "Bangchak", "updated_at": None}
+    """Call the Bangchak oil price helper directly — no agent, no LangGraph."""
+    try:
+        from agent.tools.oil_price_tool import get_oil_price_from_bangchak
+        result = get_oil_price_from_bangchak("hi diesel s")
+        if "error" in result:
+            logger.warning("Oil price fetch warning: %s", result["error"])
+            return {"diesel": None, "source": "Bangchak", "updated_at": None}
+        return {
+            "diesel": float(result["price_per_liter"]),
+            "source": "Bangchak",
+            "updated_at": str(result.get("updated_at") or ""),
+        }
+    except Exception as exc:
+        logger.warning("Oil price tool unavailable: %s", exc)
+        return {"diesel": None, "source": "Bangchak", "updated_at": None}
 
 
 def get_dashboard_summary(user_id: str | None = None) -> dict[str, Any]:
@@ -100,19 +112,25 @@ def get_dashboard_summary(user_id: str | None = None) -> dict[str, Any]:
                 )
                 channel_rows = [dict(r) for r in cur.fetchall()]
 
-                # Step 4: Invoice-items count (all time)
+                # Step 4: Invoice-items count (all time, analytical — excluded items not counted)
                 cur.execute(
-                    "SELECT COUNT(*) AS cnt FROM invoice_items WHERE user_id = %s",
+                    """
+                    SELECT COUNT(*) AS cnt
+                    FROM invoice_items
+                    WHERE user_id = %s
+                      AND (excluded_from_analysis IS NOT TRUE)
+                    """,
                     (uid,),
                 )
                 items_count = int((cur.fetchone() or {}).get("cnt") or 0)
 
-                # Step 5: Top spend items — no month filter so older invoices appear
+                # Step 5: Top spend items — analytical only, excluded rows omitted
                 cur.execute(
                     """
                     SELECT ii.name AS item_name, SUM(ii.total) AS amount
                     FROM invoice_items ii
                     WHERE ii.user_id = %s
+                      AND (ii.excluded_from_analysis IS NOT TRUE)
                     GROUP BY ii.name
                     ORDER BY amount DESC
                     LIMIT 5
@@ -150,6 +168,7 @@ def get_dashboard_summary(user_id: str | None = None) -> dict[str, Any]:
     profile: dict[str, str | None] = {
         "restaurant_name": profile_row.get("restaurant_name") or None,
         "restaurant_type": profile_row.get("business_type") or profile_row.get("restaurant_type") or None,
+        "store_type": profile_row.get("store_type") or None,
         "main_platform": channels[0]["channel"] if channels else None,
     }
 

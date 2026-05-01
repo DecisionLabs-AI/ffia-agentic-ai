@@ -78,6 +78,7 @@ def top_items(user_id: str = Depends(get_current_user_id), limit: int = 5):
                 FROM invoice_items ii
                 JOIN invoices i ON i.id = ii.invoice_id
                 WHERE ii.user_id = %s
+                  AND (ii.excluded_from_analysis IS NOT TRUE)
                   AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
                 GROUP BY ii.name
                 ORDER BY total_spend DESC

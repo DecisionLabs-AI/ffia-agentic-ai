@@ -40,12 +40,20 @@ Tenant-scoped invoice tables (always filter by user_id):
 2. invoice_items
    Columns:
    - id (SERIAL PRIMARY KEY)
-   - user_id (TEXT)          -- tenant identifier — ALWAYS include in WHERE clause
-   - invoice_id (INTEGER)    -- FK → invoices.id
-   - name (TEXT)             -- ingredient or product name
+   - user_id (TEXT)                    -- tenant identifier — ALWAYS include in WHERE clause
+   - invoice_id (INTEGER)              -- FK → invoices.id
+   - name (TEXT)                       -- ingredient or product name
    - qty (NUMERIC)
    - unit_price (NUMERIC)
    - total (NUMERIC)
+   - excluded_from_analysis (BOOLEAN)  -- DEFAULT false; true = user marked as non-business / personal item
+   - excluded_reason (TEXT)            -- optional free-text reason for exclusion, may be NULL
+
+   IMPORTANT — analysis queries:
+   - Default cost analysis (top spend, margin, monthly cost) MUST add:
+       AND (excluded_from_analysis IS NOT TRUE)
+   - If the user explicitly asks to audit or review all invoice items (including excluded ones),
+     you may omit this filter — state clearly that the result includes excluded items.
 
 3. ingredient_market_prices (global reference — no user_id filter needed)
    Columns:

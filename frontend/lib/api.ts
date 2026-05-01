@@ -179,10 +179,14 @@ export interface InvoiceResponse {
 }
 
 export interface InvoiceItem {
+  item_id?: number;
+  item_name?: string;
   name: string;
   qty: number;
   unit_price: number;
   total: number;
+  excluded_from_analysis?: boolean;
+  excluded_reason?: string | null;
 }
 
 export interface DashboardSummary {
@@ -221,6 +225,7 @@ export interface OilPriceSnapshot {
 export interface ProfileSnapshot {
   restaurant_name: string | null;
   restaurant_type: string | null;
+  store_type?: string | null;
   main_platform: string | null;
 }
 
@@ -309,8 +314,43 @@ export async function getCurrentMonthInvoices(userId: string): Promise<InvoiceRe
 }
 
 // Step 4f: Line items for a specific invoice — sandbox route
+function getInvoiceItemsForUploadPath(invoiceId: number, userId: string): string {
+  return `/invoices/${invoiceId}/items?user_id=${encodeURIComponent(userId)}`;
+}
+
+export function getInvoiceItemsForUploadUrl(invoiceId: number, userId: string): string {
+  return `${API_BASE_URL}${getInvoiceItemsForUploadPath(invoiceId, userId)}`;
+}
+
 export async function getInvoiceItemsForUpload(invoiceId: number, userId: string): Promise<InvoiceItem[]> {
-  return apiFetch<InvoiceItem[]>(`/invoices/${invoiceId}/items?user_id=${encodeURIComponent(userId)}`);
+  const items = await apiFetch<InvoiceItem[]>(getInvoiceItemsForUploadPath(invoiceId, userId));
+  return items.map((item) => ({
+    ...item,
+    name: item.name || item.item_name || "",
+  }));
+}
+
+// Step 4f-2: Soft-exclude or restore a saved invoice line item.
+export async function toggleInvoiceItemExclusion(
+  itemId: number,
+  userId: string,
+  excluded: boolean,
+  reason?: string,
+): Promise<InvoiceItem> {
+  const result = await apiFetch<{ ok: boolean; error?: string; item?: InvoiceItem }>(
+    `/invoices/items/${itemId}/exclude`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ user_id: userId, excluded, reason }),
+    },
+  );
+  if (!result.ok || !result.item) {
+    throw new Error(result.error || "Unable to update line item.");
+  }
+  return {
+    ...result.item,
+    name: result.item.name || result.item.item_name || "",
+  };
 }
 
 // Step 4g: Delete invoice — sandbox route; throws if backend signals failure

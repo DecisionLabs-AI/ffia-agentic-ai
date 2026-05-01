@@ -8,6 +8,7 @@ import { AuthUser, getCurrentUser, logout } from "@/lib/auth";
 const NAV_ITEMS = [
   { href: "/", icon: "OV", label: "Overview" },
   { href: "/setup", icon: "BS", label: "Business Setup" },
+  { href: "/cost-data", icon: "CD", label: "Cost Data" },
   { href: "/dashboard", icon: "DB", label: "Dashboard" },
   { href: "/chat", icon: "AI", label: "AI Assistant" },
 ];
@@ -35,7 +36,7 @@ export default function Sidebar() {
           <p className="text-xs font-medium text-slate-500">Fuel & Food Impact Analyzer</p>
         </Link>
         <div className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700 lg:mt-5 lg:inline-block">
-          Demo Sandbox
+          Pilot Mode
         </div>
       </div>
 
@@ -64,7 +65,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="mt-6 hidden rounded-2xl border border-orange-100 bg-orange-50 p-4 lg:block">
-        <p className="text-sm font-bold text-slate-900">จุดโฟกัสเดโม</p>
+        <p className="text-sm font-bold text-slate-900">จุดวิเคราะห์หลัก</p>
         <p className="mt-2 text-sm leading-6 text-slate-600">
           ดูต้นทุนจริง ผลกระทบน้ำมัน GP แพลตฟอร์ม และคำแนะนำที่ทำได้ทันที
         </p>
@@ -73,21 +74,14 @@ export default function Sidebar() {
       <div className="hidden flex-1 lg:block" />
 
       {user ? (
-        <div className="mt-4 rounded-2xl border border-orange-100 bg-white p-3 shadow-sm lg:mt-auto">
+        <div className="mt-4 rounded-2xl border border-orange-100 bg-white px-3 py-2.5 shadow-sm lg:mt-auto">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-orange-600">PROFILE</p>
-            <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-bold text-orange-700">
-              Signed in
-            </span>
-          </div>
-          <div className="mt-3 flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-orange-100 text-sm font-black text-orange-700">
                 {avatarInitial}
               </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-black text-slate-900">{profileName}</p>
-                <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">@{user.username}</p>
               </div>
             </div>
             <button

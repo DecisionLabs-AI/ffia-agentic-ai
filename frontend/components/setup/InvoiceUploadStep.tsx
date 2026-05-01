@@ -4,11 +4,13 @@
 // Reusable: embedded as step 4 inside Business Setup wizard.
 // userId comes from parent (already authenticated), so no auth check here.
 // Flow: select file → auto-OCR → review/edit header → Save → refresh invoice list.
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   deleteInvoice,
   getCurrentMonthInvoices,
   getInvoiceItemsForUpload,
+  getInvoiceItemsForUploadUrl,
   ocrInvoicePreview,
   saveInvoiceFromOCR,
   InvoiceItem,
@@ -66,15 +68,24 @@ export default function InvoiceUploadStep({ userId, onNext, onBack, onCancel }: 
   // Step 7: Fetch line items whenever selected invoice changes
   useEffect(() => {
     if (selectedId === null || !userId) { setLineItems([]); return; }
+    const selectedInvoice = invoices.find((inv) => inv.id === selectedId);
     let cancelled = false;
     setItemsLoading(true);
     setLineItems([]);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[InvoiceUploadStep] fetch invoice items", {
+        selected_invoice_id: selectedId,
+        selected_invoice_no: selectedInvoice?.invoice_no ?? "",
+        user_id: userId,
+        endpoint_url: getInvoiceItemsForUploadUrl(selectedId, userId),
+      });
+    }
     getInvoiceItemsForUpload(selectedId, userId)
       .then((data) => { if (!cancelled) setLineItems(data); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setItemsLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedId, userId]);
+  }, [selectedId, userId, invoices]);
 
   async function loadInvoices() {
     setListLoading(true);
@@ -202,6 +213,14 @@ export default function InvoiceUploadStep({ userId, onNext, onBack, onCancel }: 
         Upload invoice images, review extracted details, save invoices, and inspect
         current-month invoice items.
       </p>
+      <div className="mt-3">
+        <Link
+          href="/cost-data"
+          className="inline-flex items-center rounded-lg border border-orange-200 bg-white px-3 py-1.5 text-xs font-bold text-orange-700 transition hover:bg-orange-50"
+        >
+          จัดการรายการต้นทุน
+        </Link>
+      </div>
 
       {/* Step 12: Invoice save success banner */}
       {saveOk && (
@@ -482,7 +501,7 @@ export default function InvoiceUploadStep({ userId, onNext, onBack, onCancel }: 
                       </thead>
                       <tbody>
                         {lineItems.map((item, idx) => (
-                          <tr key={idx} className="border-b border-slate-50 last:border-0">
+                          <tr key={item.item_id ?? idx} className="border-b border-slate-50 last:border-0">
                             <td className="px-3 py-2 font-semibold text-slate-800">{item.name}</td>
                             <td className="px-3 py-2 text-right text-slate-600">{item.qty}</td>
                             <td className="px-3 py-2 text-right text-slate-600">{thb(item.unit_price)}</td>

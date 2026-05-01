@@ -106,10 +106,14 @@ def invoice_items(
     return [
         InvoiceItem(
             # db.py aliases `name AS item_name` — handle both key names
+            item_id=r.get("item_id"),
+            item_name=r.get("item_name") or r.get("name", ""),
             name=r.get("item_name") or r.get("name", ""),
             qty=float(r.get("qty", 0)),
             unit_price=float(r.get("unit_price", 0)),
             total=float(r.get("total", 0)),
+            excluded_from_analysis=bool(r.get("excluded_from_analysis", False)),
+            excluded_reason=r.get("excluded_reason"),
         )
         for r in rows
     ]
