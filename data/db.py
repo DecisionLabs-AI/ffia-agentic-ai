@@ -19,6 +19,17 @@ def _get_database_url() -> str | None:
     return os.getenv("DATABASE_URL")
 
 
+def _get_positive_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
 # Step 3: Connection helper
 def _require_user_id(user_id: str) -> str:
     """Return a validated tenant identifier."""
@@ -34,6 +45,13 @@ def _apply_user_context(conn, user_id: str) -> None:
         cur.execute("SELECT set_config('app.current_user_id', %s, false)", (user_id,))
 
 
+def _apply_runtime_timeouts(conn) -> None:
+    """Keep web requests from waiting indefinitely on database operations."""
+    statement_timeout_ms = _get_positive_int_env("FFIA_DB_STATEMENT_TIMEOUT_MS", 3000)
+    with conn.cursor() as cur:
+        cur.execute("SELECT set_config('statement_timeout', %s, false)", (str(statement_timeout_ms),))
+
+
 def get_connection(user_id: str | None = None):
     """Return a psycopg2 connection using DATABASE_URL from .env."""
     database_url = _get_database_url()
@@ -42,7 +60,11 @@ def get_connection(user_id: str | None = None):
             "DATABASE_URL is not set. Add it to your .env file.\n"
             "Format: postgresql://user:password@host:5432/dbname"
         )
-    conn = psycopg2.connect(database_url)
+    conn = psycopg2.connect(
+        database_url,
+        connect_timeout=_get_positive_int_env("FFIA_DB_CONNECT_TIMEOUT_SECONDS", 3),
+    )
+    _apply_runtime_timeouts(conn)
     if user_id:
         _apply_user_context(conn, _require_user_id(user_id))
     return conn

@@ -6,6 +6,12 @@
 # --- UI Framework ---
 streamlit>=1.45.0
 
+# --- FastAPI backend wrapper for Next.js migration sandbox ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.19
+
 # --- LLM + Agent Framework (LangChain + LangGraph + Gemini via Google AI API) ---
 langchain>=0.3.0
 langchain-google-vertexai>=2.0.0
