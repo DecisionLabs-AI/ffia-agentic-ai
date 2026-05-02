@@ -175,10 +175,16 @@ cp .env.example .env
 # Step 3: Fill in your runtime credentials in .env
 # Required:
 #   DATABASE_URL=postgresql://user:password@host:5432/dbname
+#   JWT_SECRET=<64-char hex>  # python3 -c "import secrets; print(secrets.token_hex(32))"
 #   FFIA_AUTH_USERS_JSON=[{"username":"...","password_hash":"pbkdf2_sha256$...","display_name":"..."}]
 #   GCP_PROJECT_ID=your-gcp-project-id
 #   GCP_SERVICE_ACCOUNT_JSON=<contents of gcp-key.json as a single-line string>
-#   GOOGLE_APPLICATION_CREDENTIALS=/path/to/gcp-key.json  (local dev only)
+#   CORS_ORIGINS=http://localhost:3000
+# Optional (defaults shown):
+#   ENVIRONMENT=development        # set to "production" on Cloud Run
+#   VERTEX_LOCATION=asia-southeast1
+#   FFIA_AGENT_MODEL=gemini-2.5-flash
+#   FFIA_AGENT_TIMEOUT_SECONDS=90
 
 # Step 4: Create and activate a Python virtual environment
 python -m venv venv
@@ -226,6 +232,23 @@ Sandbox endpoints:
 - `GET /dashboard-summary`
 
 The unauthenticated dashboard wrapper uses `FFIA_DEMO_USER_ID` when no `user_id` query parameter is supplied. Missing database, oil price, or profile data returns `null` or empty arrays instead of crashing the dashboard.
+
+#### Cloud Run — Required Environment Variables
+
+| Variable | Notes |
+|---|---|
+| `ENVIRONMENT` | Set to `production` — enforces JWT_SECRET check at startup |
+| `DATABASE_URL` | Add `?sslmode=require` for all cloud-hosted PostgreSQL |
+| `JWT_SECRET` | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `FFIA_AUTH_USERS_JSON` | Single-line JSON array of users with PBKDF2 hashes |
+| `GCP_PROJECT_ID` | GCP project ID |
+| `GCP_SERVICE_ACCOUNT_JSON` | Inline JSON string — **not** a file path. Or use Cloud Run Service Account (Workload Identity) and omit this var. |
+| `VERTEX_LOCATION` | Default: `asia-southeast1` |
+| `FFIA_AGENT_MODEL` | Default: `gemini-2.5-flash`. Both the agent and OCR use this var. |
+| `CORS_ORIGINS` | Frontend Cloud Run URL — use `CORS_ORIGINS`, **not** `FRONTEND_ORIGINS` |
+| `FFIA_AGENT_TIMEOUT_SECONDS` | Default: `60`. Recommend `90` on Cloud Run. |
+
+Store sensitive values (`JWT_SECRET`, `DATABASE_URL`, `GCP_SERVICE_ACCOUNT_JSON`, `FFIA_AUTH_USERS_JSON`) in Secret Manager and mount via `--set-secrets`. See `.env.cloudrun.example` for the full template.
 
 ### Frontend
 

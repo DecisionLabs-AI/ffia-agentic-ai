@@ -12,7 +12,18 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
 # Step 2: JWT config from environment
-_JWT_SECRET = os.getenv("JWT_SECRET", "ffia-dev-secret-change-in-production")
+# In production (ENVIRONMENT=production) a missing JWT_SECRET raises at startup rather
+# than silently falling back to the insecure dev default.
+_ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+_jwt_secret_raw = os.getenv("JWT_SECRET", "")
+if not _jwt_secret_raw:
+    if _ENVIRONMENT == "production":
+        raise RuntimeError(
+            "JWT_SECRET must be set in production. "
+            'Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"'
+        )
+    _jwt_secret_raw = "ffia-dev-secret-change-in-production"
+_JWT_SECRET = _jwt_secret_raw
 _JWT_ALGORITHM = "HS256"
 _bearer = HTTPBearer()
 

@@ -46,11 +46,12 @@ def _get_llm():
                 _creds_dict,
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
-        # Step 3b: Build LLM — gemini-2.5-flash, credentials injected at runtime
+        # Step 3b: Build LLM — model/location from env (reuses FFIA_AGENT_MODEL; no
+        # separate FFIA_OCR_MODEL is introduced yet — both agent and OCR use the same model).
         _llm = ChatVertexAI(
-            model="gemini-2.5-flash",
+            model=os.getenv("FFIA_AGENT_MODEL", "gemini-2.5-flash"),
             project=os.getenv("GCP_PROJECT_ID"),
-            location="asia-southeast1",
+            location=os.getenv("VERTEX_LOCATION", "asia-southeast1"),
             credentials=_credentials,
             temperature=0.0,        # Deterministic extraction
             max_output_tokens=8192, # Long receipts (19+ items with Thai names) need headroom

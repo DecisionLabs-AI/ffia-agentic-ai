@@ -56,12 +56,15 @@ def _load_system_prompt() -> str:
     return "You are FFIA, a restaurant cost optimization AI assistant for Bangkok."
 
 
-# Step 6: Validate required environment variables at import time
+# Step 6: Runtime-configurable model and region — read after load_dotenv() has run.
+# Defaults keep behaviour identical to the previous hardcoded values.
+_AGENT_MODEL     = os.getenv("FFIA_AGENT_MODEL", "gemini-2.5-flash")
+_VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "asia-southeast1")
+
+
 def _validate_env():
     """Warn loudly if critical credentials are missing."""
     missing = []
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        missing.append("GOOGLE_APPLICATION_CREDENTIALS")
     if not os.getenv("GCP_PROJECT_ID"):
         missing.append("GCP_PROJECT_ID")
     if not os.getenv("DATABASE_URL"):
@@ -90,11 +93,11 @@ def _get_agent():
                 _creds_dict,
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
-        # Step 7b: Build LLM — gemini-2.5-flash, credentials injected at runtime
+        # Step 7b: Build LLM — model/location from env (FFIA_AGENT_MODEL, VERTEX_LOCATION)
         llm = ChatVertexAI(
-            model="gemini-2.5-flash",
+            model=_AGENT_MODEL,
             project=os.getenv("GCP_PROJECT_ID"),
-            location="asia-southeast1",
+            location=_VERTEX_LOCATION,
             credentials=_credentials,
             temperature=0,
             max_output_tokens=4096,

@@ -18,8 +18,17 @@ from api.schemas import LoginRequest, LoginResponse, MeResponse
 # Step 2: Router
 router = APIRouter()
 
-# Step 3: JWT config
-_JWT_SECRET = os.getenv("JWT_SECRET", "ffia-dev-secret-change-in-production")
+# Step 3: JWT config — mirrors guard in api/deps.py
+_ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+_jwt_secret_raw = os.getenv("JWT_SECRET", "")
+if not _jwt_secret_raw:
+    if _ENVIRONMENT == "production":
+        raise RuntimeError(
+            "JWT_SECRET must be set in production. "
+            'Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"'
+        )
+    _jwt_secret_raw = "ffia-dev-secret-change-in-production"
+_JWT_SECRET = _jwt_secret_raw
 _JWT_ALGORITHM = "HS256"
 _TOKEN_EXPIRE_HOURS = 8
 
