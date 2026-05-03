@@ -21,7 +21,7 @@
 | Enhancement | Status | Evidence | Week Done |
 |---|---|---|---|
 | Multi-agent pattern | ⬜ Pending | — | W4+ |
-| RAG integration | ⬜ Pending | — | W4+ |
+| RAG integration | ✅ Complete | `rag_tool.py` — pgvector similarity search over `invoice_embeddings` | W4 |
 | Memory across sessions | ⬜ Pending | — | W4+ |
 | Agentic loop (auto-retry) | ⬜ Pending | — | W4+ |
 
@@ -35,7 +35,7 @@
 | Data Integration | 20% | ✅ Complete | Cloud PostgreSQL connected via `DATABASE_URL`; SELECT guardrail enforced |
 | Technical Documentation & Git Practice | 20% | ✅ Complete | README, architecture.md, rubric-status.md, CLAUDE.md all updated; .gitignore + .env.example in place |
 | AI / Vibe-Coding Tool Leverage | 15% | ✅ Complete | Claude Code used for scaffolding, agent implementation, UI design; documented in README |
-| Team Technical Leadership | 10% | 🔄 In Progress | W2 agent demo available for mgmt team; dark sidebar UI shipped |
+| Team Technical Leadership | 10% | ✅ Complete | Full agent demo live; modular UI shipped; docs updated through W4 |
 
 ---
 
@@ -46,7 +46,7 @@
 | **W1** | Discover & Align | Repo created, folder structure, problem statement committed | ✅ Complete |
 | **W2** | Agent Skeleton | LangGraph ReAct agent + Gemini 2.5 Flash (Google AI API) + PostgreSQL + WebSearch + Streamlit UI with dark sidebar | ✅ Complete |
 | **W3** | Tools & Data Sprint | Live demo with 5+ tools + real dataset; OCR invoice upload, Data Upload page, Business Profile Settings, business rules tools (L1/L3/L4/Scenario) | ✅ Complete |
-| **W4** | UI & Integration | Full agent via UI, all reasoning steps visible, multi-tool flows | ⬜ Pending |
+| **W4** | UI & Integration | Full agent via UI, all reasoning steps visible, multi-tool flows | ✅ Complete |
 | **W5** | Harden & Document | README + architecture.md complete, code freeze, end-to-end tested | ⬜ Pending |
 | **W6** | Final Demo & Submit | Tag v1.0, repo URL submitted, team demo recorded | ⬜ Pending |
 
@@ -101,4 +101,23 @@
 
 *Legend: ✅ Complete | 🔄 In Progress | ⬜ Pending*
 
-*Last updated: W3 — Oil price tool (Bangchak API), ingredient price tool, business rules tools (L1/L3/L4/Scenario Classifier), OCR invoice upload (Claude Vision), Data Upload page, Business Profile Settings page. All minimum requirements met.*
+---
+
+## W4 Deliverables Detail
+
+| Item | Status | Notes |
+|---|---|---|
+| App modularized into `app/views/` + `app/components/` | ✅ | `chat.py`, `dashboard.py`, `profile.py`, `upload.py`; `layout.py`, `sidebar.py` |
+| `ingredient_price_tool` (via PostgreSQL) | ✅ | `agent/tools/ingredient_price_tool.py` |
+| `platform_gp_lookup_tool` | ✅ | `agent/tools/platform_gp_lookup_tool.py` — per-platform GP % from `platform_fee` table |
+| `rag_tool` (pgvector) | ✅ | `agent/tools/rag_tool.py` — similarity search over `invoice_embeddings` |
+| 3-step Business Setup stepper | ✅ | `app/views/profile.py` — profile form → invoice upload → readiness review |
+| Invoice delete UI | ✅ | `app/views/upload.py` — delete button wired to DB |
+| Vertex AI auth (service account) | ✅ | `GCP_SERVICE_ACCOUNT_JSON` + `GCP_PROJECT_ID` replaces `GOOGLE_API_KEY` |
+| Reasoning trace in UI | ✅ | `st.expander("Agent Reasoning Trace")` shows Action + Observation per step |
+| `GraphRecursionError` graceful fallback | ✅ | `app/views/chat.py` — user-friendly Thai message instead of raw traceback |
+| Full multi-tool flows via UI | ✅ | 10 tools wired; agent runs end-to-end from chat input |
+
+---
+
+*Last updated: W4 — UI modularized into views/components, RAG tool, ingredient price tool, platform GP lookup, 3-step Business Setup stepper, invoice delete, Vertex AI auth, GraphRecursionError graceful fallback. All minimum requirements met.*

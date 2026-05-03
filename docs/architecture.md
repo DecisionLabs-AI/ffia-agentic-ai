@@ -1,6 +1,6 @@
 # FFIA — Project Context & Agent Architecture
 
-> Status: **W4 Active** — App modularized into `app/views/` + `app/components/`. New tools: ingredient price, platform GP lookup, RAG vector search. 3-step Business Setup stepper. Invoice delete UI. Vertex AI auth (service account) replaces API key auth.
+> Status: **W4 Complete** — App modularized into `app/views/` + `app/components/`. New tools: ingredient price, platform GP lookup, RAG vector search. 3-step Business Setup stepper. Invoice delete UI. Vertex AI auth (service account) replaces API key auth. GraphRecursionError graceful fallback shipped.
 
 ---
 
@@ -261,11 +261,11 @@ Returns:
 | W4 | App modularized into `app/views/` + `app/components/` + `app/styles/`; ingredient price tool; platform GP lookup tool; RAG vector search tool (`rag_tool.py`); `invoice_embeddings` table with pgvector; 3-step Business Setup stepper; invoice delete UI; Vertex AI service account auth |
 
 ## Planned Next
+- [x] `GraphRecursionError` graceful UI fallback — `app/views/chat.py` surfaces user-friendly Thai message
 - [ ] `calculate_margin` tool — compute true net margin per menu item using invoice and profile data
 - [ ] `simulate_scenario` tool — what-if oil price sensitivity analysis
-- [ ] `GraphRecursionError` graceful UI fallback — catch in `app/views/chat.py`, surface user-friendly message instead of raw traceback
 - [ ] Multi-agent: Planner → Data Agent + Margin Agent + Recommendation Agent
 
 ---
 
-*Last updated: W4 — app modularized into views/components, RAG tool, ingredient price tool, platform GP lookup, 3-step stepper, invoice delete, Vertex AI auth.*
+*Last updated: W4 complete — UI modularized into views/components, RAG tool, ingredient price tool, platform GP lookup, 3-step stepper, invoice delete, Vertex AI auth, GraphRecursionError graceful fallback.*

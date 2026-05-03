@@ -287,8 +287,7 @@ Do not commit `.env`, `.env.local`, `gcp-key.json`, service account keys, or oth
 - `calculate_margin` tool — compute true net margin per menu item using invoice and profile data — planned next.
 - `simulate_scenario` tool — what-if oil price sensitivity analysis — planned next.
 - Multi-agent pattern (Planner → Data Agent + Margin Agent + Recommendation Agent) — future.
-- GraphRecursionLimit hardening — graceful UI fallback when agent loops exceed `recursion_limit=9` — in progress.
 
 ---
 
-*Last updated: W4 — app modularized into views/components, RAG vector search tool, ingredient price tool, platform GP lookup tool, 3-step Business Setup stepper, invoice delete UI, Vertex AI auth.*
+*Last updated: W4 complete — UI modularized into views/components, RAG vector search tool, ingredient price tool, platform GP lookup tool, 3-step Business Setup stepper, invoice delete UI, Vertex AI auth, GraphRecursionError graceful fallback.*
