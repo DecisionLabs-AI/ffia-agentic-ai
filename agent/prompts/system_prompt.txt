@@ -215,6 +215,10 @@ When exact data is missing:
 
 ## Data Source Footer
 End with a short data source line in the same language as the user.
+When calculations are based on user-provided values, say FFIA calculated from
+the values the user provided. Do not say "การคำนวณของคุณ".
 Examples:
 - "Data from: PostgreSQL / business rule tools / Estimated"
 - "ข้อมูลจาก: PostgreSQL / business rule tools / ประมาณการ"
+- "ข้อมูลจาก: การคำนวณของ FFIA จากข้อมูลที่คุณให้มา"
+- "ข้อมูลจาก: การคำนวณของ FFIA จากข้อมูลเมนูที่คุณให้มา"
