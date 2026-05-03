@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import ReactMarkdown from "react-markdown";
 import AppShell from "@/components/AppShell";
 import AuthGuard from "@/components/AuthGuard";
 import { AuthUser } from "@/lib/auth";
@@ -65,6 +66,25 @@ function AssistantAvatar() {
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 12.5h.01M14.5 12.5h.01M10 16h4" />
       </svg>
     </div>
+  );
+}
+
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        h1: ({ children }) => <h1 className="mb-2 text-lg font-black leading-7 text-slate-950">{children}</h1>,
+        h2: ({ children }) => <h2 className="mb-2 text-base font-black leading-7 text-slate-950">{children}</h2>,
+        h3: ({ children }) => <h3 className="mb-1.5 text-sm font-black leading-6 text-slate-950">{children}</h3>,
+        p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
+        strong: ({ children }) => <strong className="font-black text-slate-950">{children}</strong>,
+        ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+        ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+        li: ({ children }) => <li className="pl-1">{children}</li>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   );
 }
 
@@ -227,7 +247,9 @@ function ChatExperience({ user }: { user: AuthUser }) {
                 <div key={`${message.role}-${index}`} className="flex items-start gap-3 sm:gap-4">
                   <AssistantAvatar />
                   <div className="max-w-[calc(100%-4rem)] rounded-2xl border border-orange-100 bg-white px-4 py-3 text-sm leading-7 text-slate-800 shadow-md shadow-orange-100/70 sm:max-w-[75%]">
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <div className="space-y-2">
+                      <AssistantMarkdown content={message.content} />
+                    </div>
                     {message.error ? (
                       <p className="mt-2 text-xs font-semibold text-red-600">{message.error}</p>
                     ) : null}

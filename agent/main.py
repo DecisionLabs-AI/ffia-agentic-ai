@@ -142,19 +142,24 @@ MAX_CHAT_HISTORY_MESSAGES = 12
 
 def _should_inject_latest_invoice(user_message: str) -> bool:
     """Return True when the user is asking about an invoice."""
-    return bool(re.search(r"\binvoices?\b", user_message, flags=re.IGNORECASE))
+    return bool(re.search(
+        r"\binvoices?\b|receipt|latest\s+bill|ใบเสร็จ|บิล|วัตถุดิบ",
+        user_message,
+        flags=re.IGNORECASE,
+    ))
 
 
 _PROFILE_QUESTION_PATTERN = re.compile(
-    r"(profile|โปรไฟล์"
+    r"(profile|โปรไฟล์|โปรไฟล์ร้าน"
     r"|biggest.cost.risk|cost.risk"
     r"|what.should.i.optim|ควรปรับ|ควรทำอะไร"
-    r"|based.on.my|จากโปรไฟล์"
-    r"|my.restaurant|ร้านของฉัน|ธุรกิจของฉัน"
-    r"|am.i.at.risk|เสี่ยงไหม"
+    r"|based.on.my|จากโปรไฟล์|จากข้อมูลร้าน"
+    r"|my.restaurant|my.business|ร้านของฉัน|ร้านฉัน|ธุรกิจของฉัน|ธุรกิจฉัน"
+    r"|am.i.at.risk|เสี่ยงไหม|เสี่ยงต้นทุน|ความเสี่ยงต้นทุน"
     r"|how.is.my.restaurant"
-    r"|biggest.risk|ความเสี่ยงหลัก"
+    r"|biggest.risk|ความเสี่ยงหลัก|ต้นทุนตรงไหน"
     r"|should.i.optimize|optimize.my"
+    r"|ช่องทางเดลิเวอรี่"
     r"|ปัญหาหลัก|ร้านเป็นยังไง)",
     re.IGNORECASE,
 )
@@ -166,7 +171,7 @@ def _is_profile_question(user_message: str) -> bool:
 
 
 _PROMO_QUESTION_PATTERN = re.compile(
-    r"(โปร|โปรโมชั่น|ส่วนลด|ลดราคา|discount|promo|promotion|flash sale|price cut)",
+    r"(โปร(?!ไฟล์)|โปรโมชั่น|ส่วนลด|ลดราคา|discount|promo|promotion|flash sale|price cut)",
     re.IGNORECASE,
 )
 _PROMO_DISCOUNT_VALUE_PATTERN = re.compile(
@@ -191,6 +196,11 @@ def _is_thai_message(text: str) -> bool:
 
 def _build_promo_missing_inputs_reply(user_message: str) -> str | None:
     """Return a minimal follow-up question when promo viability inputs are insufficient."""
+    # Profile, invoice, and tenant data questions must not be downgraded into
+    # promo clarification just because Thai profile text contains "โปร".
+    if _is_profile_question(user_message) or _should_inject_latest_invoice(user_message):
+        return None
+
     if not _PROMO_QUESTION_PATTERN.search(user_message or ""):
         return None
 

@@ -92,6 +92,10 @@ The final answer must:
 - User-provided menu selling price and cost data overrides generic profile-risk
   analysis. Use DB/profile data only to enrich platform fee or context after
   completing the menu-level calculations.
+- Thai profile/risk questions such as "โปรไฟล์ร้าน", "เสี่ยงต้นทุน",
+  "ต้นทุนตรงไหน", "จากข้อมูลร้าน", or "ช่องทางเดลิเวอรี่" must query/use
+  PostgreSQL profile/channel data before answering and must not be treated as
+  promo questions.
 - Mandatory DB routing: for any question about the user's profile, business risk,
   channel/delivery/platform profitability, invoices/receipts, or "my business",
   call postgres_tool before the final answer. The authenticated current_user_id
