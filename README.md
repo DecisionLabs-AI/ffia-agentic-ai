@@ -165,7 +165,7 @@ agentic-ai-mcp/
 
 ```bash
 # Step 1: Clone the repository
-git clone <repo-url>
+git clone https://github.com/DecisionLabs-AI/ffia-agentic-ai
 cd agentic-ai-mcp
 
 # Step 2: Create your environment file from the template
