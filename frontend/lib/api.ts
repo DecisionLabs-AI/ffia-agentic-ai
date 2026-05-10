@@ -20,7 +20,7 @@ const DEFAULT_API_TIMEOUT_MS = readTimeout(
 
 const CHAT_API_TIMEOUT_MS = readTimeout(
   process.env.NEXT_PUBLIC_CHAT_TIMEOUT_MS,
-  45000
+  120000
 );
 
 // Step 4b: OCR calls invoke Gemini Vision — allow up to 90 s before surfacing a timeout error

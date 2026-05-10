@@ -95,6 +95,7 @@ function ChatExperience({ user }: { user: AuthUser }) {
   const [loading, setLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLElement | null>(null);
   const isEmptyChat = messages.length <= 1 && !loading;
 
   useEffect(() => {
@@ -113,7 +114,12 @@ function ChatExperience({ user }: { user: AuthUser }) {
   }, [user.user_id]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const frame = requestAnimationFrame(() => {
+      if (containerRef.current) {
+        containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [messages, loading]);
 
   function saveHistoryItem(question: string, answer: string) {
@@ -229,6 +235,7 @@ function ChatExperience({ user }: { user: AuthUser }) {
         </div>
 
         <section
+          ref={containerRef}
           className={`overflow-y-auto rounded-3xl border border-orange-100 bg-white p-4 shadow-sm sm:p-6 ${
             isEmptyChat
               ? "min-h-[320px] max-h-[360px]"
@@ -273,8 +280,13 @@ function ChatExperience({ user }: { user: AuthUser }) {
             {loading ? (
               <div className="flex items-start gap-3 sm:gap-4">
                 <AssistantAvatar />
-                <div className="max-w-sm rounded-2xl border border-orange-100 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-md shadow-orange-100/70">
-                  FFIA กำลังวิเคราะห์ข้อมูลร้านและต้นทุน...
+                <div className="flex items-center gap-2 max-w-sm rounded-2xl border border-orange-100 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-md shadow-orange-100/70">
+                  <span>FFIA กำลังวิเคราะห์ข้อมูลร้านและต้นทุน</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-orange-400 [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-orange-400 [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-orange-400 [animation-delay:300ms]" />
+                  </span>
                 </div>
               </div>
             ) : null}
