@@ -59,6 +59,93 @@ export default function InvoiceUploadStep({ userId, onNext, onBack, onCancel }: 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  function inputNumberValue(value: number) {
+    return Number.isFinite(value) ? String(value) : "";
+  }
+
+  function parseNumberInput(value: string) {
+    if (value.trim() === "") return Number.NaN;
+    return Number(value);
+  }
+
+  function updateOcrItems(updater: (items: InvoiceItem[]) => InvoiceItem[]) {
+    setOcrData((prev) => {
+      if (!prev) return prev;
+      return { ...prev, items: updater(prev.items) };
+    });
+  }
+
+  function updateLineItemName(index: number, name: string) {
+    updateOcrItems((items) =>
+      items.map((item, idx) =>
+        idx === index ? { ...item, name, item_name: name } : item,
+      ),
+    );
+    setSaveError("");
+  }
+
+  function updateLineItemNumber(index: number, field: "qty" | "unit_price" | "total", value: string) {
+    const nextValue = parseNumberInput(value);
+    updateOcrItems((items) =>
+      items.map((item, idx) => {
+        if (idx !== index) return item;
+        const updated = { ...item, [field]: nextValue };
+        if (field === "qty" || field === "unit_price") {
+          updated.total = Number.isFinite(updated.qty) && Number.isFinite(updated.unit_price)
+            ? Number((updated.qty * updated.unit_price).toFixed(2))
+            : Number.NaN;
+        }
+        return updated;
+      }),
+    );
+    setSaveError("");
+  }
+
+  function formatLineItemNumber(index: number, field: "unit_price" | "total") {
+    updateOcrItems((items) =>
+      items.map((item, idx) =>
+        idx === index && Number.isFinite(item[field])
+          ? { ...item, [field]: Number(item[field].toFixed(2)) }
+          : item,
+      ),
+    );
+  }
+
+  function addLineItem() {
+    updateOcrItems((items) => [...items, { name: "", item_name: "", qty: 0, unit_price: 0, total: 0 }]);
+    setSaveError("");
+  }
+
+  function deleteLineItem(index: number) {
+    updateOcrItems((items) => items.filter((_, idx) => idx !== index));
+    setSaveError("");
+  }
+
+  function clearLineItem(index: number) {
+    updateOcrItems((items) =>
+      items.map((item, idx) =>
+        idx === index ? { ...item, name: "", item_name: "", qty: 0, unit_price: 0, total: 0 } : item,
+      ),
+    );
+    setSaveError("");
+  }
+
+  function validateBeforeSave(data: OCRPreviewResponse) {
+    if (!invoiceNo.trim()) return "Invoice number is required.";
+    if (!Number.isFinite(totalAmount) || totalAmount < 0) return "Total amount must be a number greater than or equal to 0.";
+    if (data.items.length === 0) return "At least one line item is required.";
+
+    for (const [index, item] of data.items.entries()) {
+      const rowLabel = `Line item ${index + 1}`;
+      if (!String(item.name || item.item_name || "").trim()) return `${rowLabel}: item name cannot be empty.`;
+      if (!Number.isFinite(item.qty) || item.qty < 0) return `${rowLabel}: qty must be a number greater than or equal to 0.`;
+      if (!Number.isFinite(item.unit_price) || item.unit_price < 0) return `${rowLabel}: unit price must be a number greater than or equal to 0.`;
+      if (!Number.isFinite(item.total) || item.total < 0) return `${rowLabel}: total must be a number greater than or equal to 0.`;
+    }
+
+    return "";
+  }
+
   // Step 6: Load invoice list when userId becomes available
   useEffect(() => {
     if (!userId) return;
@@ -158,16 +245,30 @@ export default function InvoiceUploadStep({ userId, onNext, onBack, onCancel }: 
   // Step 9: Save after review
   async function handleSave() {
     if (!ocrData) return;
+    const validationError = validateBeforeSave(ocrData);
+    if (validationError) {
+      setSaveError(validationError);
+      setSaveOk(false);
+      return;
+    }
+
     setSaving(true);
     setSaveError("");
     setSaveOk(false);
     try {
       const payload: InvoiceSavePayload = {
-        vendor,
-        invoice_no: invoiceNo,
+        vendor: vendor.trim(),
+        invoice_no: invoiceNo.trim(),
         invoice_date: invoiceDate,
         total_amount: totalAmount,
-        items: ocrData.items,
+        items: ocrData.items.map((item) => ({
+          ...item,
+          name: String(item.name || item.item_name || "").trim(),
+          item_name: String(item.name || item.item_name || "").trim(),
+          qty: Number(item.qty),
+          unit_price: Number(item.unit_price),
+          total: Number(item.total),
+        })),
       };
       const result = await saveInvoiceFromOCR(userId, payload);
       if (!result.ok) {
@@ -311,60 +412,122 @@ export default function InvoiceUploadStep({ userId, onNext, onBack, onCancel }: 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Vendor</label>
-              <input type="text" value={vendor} onChange={(e) => setVendor(e.target.value)}
+              <input type="text" value={vendor} onChange={(e) => { setVendor(e.target.value); setSaveError(""); }}
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100" />
             </div>
             <div>
               <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">
                 Invoice No <span className="text-orange-500">*</span>
               </label>
-              <input type="text" value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)}
+              <input type="text" value={invoiceNo} onChange={(e) => { setInvoiceNo(e.target.value); setSaveError(""); }}
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100" />
             </div>
             <div>
               <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Invoice Date</label>
-              <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)}
+              <input type="date" value={invoiceDate} onChange={(e) => { setInvoiceDate(e.target.value); setSaveError(""); }}
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100" />
             </div>
             <div>
               <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Total Amount (฿)</label>
-              <input type="number" step="0.01" min={0} value={totalAmount}
-                onChange={(e) => setTotalAmount(parseFloat(e.target.value) || 0)}
+              <input type="number" step="0.01" min={0} value={inputNumberValue(totalAmount)}
+                onChange={(e) => { setTotalAmount(parseNumberInput(e.target.value)); setSaveError(""); }}
+                onBlur={() => { if (Number.isFinite(totalAmount)) setTotalAmount(Number(totalAmount.toFixed(2))); }}
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100" />
             </div>
           </div>
 
-          {/* Line items preview table */}
-          {ocrData.items.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">Line Items</p>
-              <div className="overflow-x-auto rounded-xl border border-slate-100">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
-                      <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Item Name</th>
-                      <th className="px-3 py-2 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Qty</th>
-                      <th className="px-3 py-2 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Unit Price</th>
-                      <th className="px-3 py-2 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ocrData.items.map((item, idx) => (
-                      <tr key={idx} className="border-b border-slate-50 last:border-0">
-                        <td className="px-3 py-2 font-semibold text-slate-800">{item.name}</td>
-                        <td className="px-3 py-2 text-right text-slate-600">{item.qty}</td>
-                        <td className="px-3 py-2 text-right text-slate-600">{thb(item.unit_price)}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-slate-800">{thb(item.total)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="mt-1 text-xs text-slate-400">
-                {ocrData.items.length} line item{ocrData.items.length !== 1 ? "s" : ""} extracted
-              </p>
+          {/* Editable line items table */}
+          <div className="mt-4">
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Line Items</p>
+              <button type="button" onClick={addLineItem}
+                className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-bold text-orange-700 hover:bg-orange-100">
+                Add line item
+              </button>
             </div>
-          )}
+            <div className="overflow-x-auto rounded-xl border border-slate-100">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Item Name</th>
+                    <th className="w-24 px-3 py-2 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Qty</th>
+                    <th className="w-32 px-3 py-2 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Unit Price</th>
+                    <th className="w-32 px-3 py-2 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Total</th>
+                    <th className="w-32 px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ocrData.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-4 text-center text-sm font-semibold text-slate-400">
+                        No line items yet. Add at least one item before saving.
+                      </td>
+                    </tr>
+                  ) : (
+                    ocrData.items.map((item, idx) => (
+                      <tr key={idx} className="border-b border-slate-50 last:border-0">
+                        <td className="px-3 py-2">
+                          <input
+                            type="text"
+                            value={item.name || item.item_name || ""}
+                            onChange={(e) => updateLineItemName(idx, e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-slate-800 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            value={inputNumberValue(item.qty)}
+                            onChange={(e) => updateLineItemNumber(idx, "qty", e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-right text-sm text-slate-600 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            value={inputNumberValue(item.unit_price)}
+                            onChange={(e) => updateLineItemNumber(idx, "unit_price", e.target.value)}
+                            onBlur={() => formatLineItemNumber(idx, "unit_price")}
+                            className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-right text-sm text-slate-600 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            value={inputNumberValue(item.total)}
+                            onChange={(e) => updateLineItemNumber(idx, "total", e.target.value)}
+                            onBlur={() => formatLineItemNumber(idx, "total")}
+                            className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-right text-sm font-semibold text-slate-800 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button type="button" onClick={() => clearLineItem(idx)}
+                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-50">
+                              Clear
+                            </button>
+                            <button type="button" onClick={() => deleteLineItem(idx)}
+                              className="rounded-lg border border-red-200 px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-50">
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">
+              {ocrData.items.length} line item{ocrData.items.length !== 1 ? "s" : ""} ready to save
+            </p>
+          </div>
 
           {saveError && (
             <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">
@@ -376,7 +539,7 @@ export default function InvoiceUploadStep({ userId, onNext, onBack, onCancel }: 
           <div className="mt-4 border-t border-slate-100 pt-4">
             <p className="mb-3 text-sm font-bold text-slate-700">Step 4: Save Invoice</p>
             <div className="flex gap-2">
-              <button type="button" onClick={handleSave} disabled={saving || !invoiceNo.trim()}
+              <button type="button" onClick={handleSave} disabled={saving}
                 className="rounded-xl bg-orange-600 px-5 py-2 text-sm font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-40">
                 {saving ? "กำลังบันทึก..." : "Save Invoice to Database"}
               </button>

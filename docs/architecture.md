@@ -1,177 +1,314 @@
-# FFIA — Project Context & Agent Architecture
+# FFIA - Current Architecture
 
-> Status: **W4 Complete** — App modularized into `app/views/` + `app/components/`. New tools: ingredient price, platform GP lookup, RAG vector search. 3-step Business Setup stepper. Invoice delete UI. Vertex AI auth (service account) replaces API key auth. GraphRecursionError graceful fallback shipped.
+> Status: submission-ready MVP/prototype. The active product path is
+> Next.js + FastAPI + LangGraph ReAct + PostgreSQL/Supabase. The legacy
+> Streamlit app remains in the repository but is not the current primary
+> deployed path.
 
 ---
 
 ## Business Context
 
-FFIA (Fuel & Food Impact Analyzer) is an AI-powered decision support tool for Bangkok restaurant owners. It connects real-time oil price movements to menu cost structures, helping operators understand how fuel and ingredient costs affect their margins — without needing a data analyst.
+FFIA (Fuel & Food Impact Analyzer) helps Bangkok restaurant owners connect
+fuel prices, delivery platform fees, promotions, and actual invoice costs to
+pricing and margin decisions.
 
-**Target users:** Restaurant owners and operators in Bangkok who manage food costs manually and lack visibility into how commodity price swings affect menu profitability.
+The MVP is designed around a practical owner workflow:
 
-**Problems it solves:**
-- **Cost increase analysis** — quantify the impact of oil/fuel price changes on ingredient and delivery costs
-- **Menu risk detection** — flag which menu items are most exposed to cost volatility
-- **Pricing recommendations** — suggest adjusted menu prices to protect target margins
-
----
-
-## Data & Business Logic Source
-
-All business logic, data definitions, and scenario rules are maintained as living documents in the `docs/` folder:
-
-| Document | Purpose |
-|---|---|
-| `docs/data_definition.md` | Schema definitions, field meanings, data types, and acceptable value ranges |
-| `docs/business_rules.md` | Margin calculation formulas, cost allocation logic, and pricing thresholds |
-| `docs/scenarios.md` | Pre-defined what-if scenarios used by the simulation tool |
-| `docs/demo_script.md` | Guided demo flow — sample questions, expected agent responses, and presenter notes |
-
-→ These documents are the **single source of truth** for all system logic. When implementing tools or agent behavior, defer to these files — not assumptions or LLM defaults.
+1. Log in.
+2. Set up restaurant profile and channel mix.
+3. Upload an invoice image.
+4. Review and edit OCR-extracted invoice data.
+5. Save invoice data to PostgreSQL.
+6. Inspect dashboard cost summary and top spend items.
+7. Ask the AI Assistant for profile, platform, promo, oil price, or cost-risk analysis.
 
 ---
 
-## AI Development & Prompt Rules
+## Active Deployed Structure
 
-Rules that apply when generating code, prompts, or agent logic for this project:
-
-- **Always apply the Style Guide Prompt** before generating or modifying any code — consistency matters across weeks
-- **Do not hallucinate libraries or functions** — only use packages present in `requirements.txt` or explicitly approved
-- **Validate all inputs** — check type, range, and empty/null before passing to tools or queries
-- **Explain before fixing** — when diagnosing an error, describe the root cause first, then apply the fix
-- **Use deterministic logic in tools** — tools must return consistent outputs for the same inputs; no randomness or LLM calls inside tools
-- **Security first** — all secrets via `.env` only; never hardcode credentials or connection strings
-- **Model pinning** — always use `gemini-2.5-flash` or newer; `gemini-1.5-flash` is deprecated and causes 404 errors
-
----
-
-## Team Responsibility Model
-
-| Role | Responsibilities |
-|---|---|
-| **Business Team** | Define data schemas (`data_definition.md`), business rules (`business_rules.md`), simulation scenarios (`scenarios.md`), and demo flow (`demo_script.md`) |
-| **IT Lead (Kanpirom)** | Implement agent tools, wire LangGraph agent, integrate database and UI, and ensure system behavior matches business-defined rules |
-
-The business team owns the *what* — the IT Lead owns the *how*. Implementation decisions that affect business logic must be validated against `docs/business_rules.md` before merging.
-
----
-
-## System Design Philosophy
-
-FFIA uses a **single-agent, multi-tool architecture**:
-
-- **Agent** (`agent/main.py`) — orchestrates reasoning via a LangGraph ReAct loop; decides which tools to call, interprets observations, and generates final recommendations in natural language
-- **Tools** (`agent/tools/`) — handle all deterministic logic (SQL queries, margin calculations, scenario simulation); tools never call the LLM and always return structured, predictable outputs
-- **Separation of concerns** — the agent reasons, tools compute; this keeps the LLM focused on language and intent while tools guarantee correctness for numeric and data operations
-
-This design makes the system easier to test (tools are pure functions), easier to debug (reasoning traces are captured per step), and easier to extend (new tools can be added without changing agent logic).
-
----
-
-## High-Level Architecture
-
-```
-User (Streamlit — dark sidebar)
-        │
-        ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│  app/main.py  (bootstrap: auth wall, CSS inject, sidebar, router)    │
-│  app/views/dashboard.py   app/views/profile.py   app/views/upload.py │
-│  app/views/chat.py        app/components/layout.py + sidebar.py      │
-│  Auth: FFIA_AUTH_USERS_JSON (PBKDF2)                                 │
-│  OCR:  app/utils/ocr.py — Claude Vision invoice extraction           │
-└────────────┬──────────────────────────────┬─────────────────────────┘
-             │ run_agent()                  │ data/db.py
-             ▼                              ▼
-┌────────────────────────┐   ┌──────────────────────────────────────┐
-│      agent/main.py     │   │            data/db.py                │
-│  LangGraph ReAct Agent │   │  psycopg2 CRUD helpers               │
-│  Gemini 2.5 Flash      │   │  invoices, invoice_items,            │
-│  Vertex AI (SvcAcct)   │   │  restaurant_profiles,                │
-│  Thought→Action→Obs    │   │  ingredient_market_prices,           │
-│  recursion_limit=9     │   │  invoice_embeddings (pgvector)       │
-└──┬──┬──┬──┬──┬──┬──┬───┘  └──────────────┬───────────────────────┘
-   │  │  │  │  │  │  │                       │
-   ▼  ▼  ▼  ▼  ▼  ▼  ▼                       ▼
-postgres_tool          rag_tool         PostgreSQL (Supabase)
-oil_price_tool         search_tool      Row-Level Security (RLS)
-ingredient_price_tool                   per user_id tenant
-platform_gp_lookup_tool                 pgvector extension (RAG)
-business_rules_tool (×4)
-```
-
----
-
-## Components
-
-### 1. LLM Core
-- **Model**: Gemini 2.5 Flash via `ChatVertexAI` (`langchain-google-vertexai`)
-- **Framework**: LangGraph `create_react_agent` — ReAct (Reason + Act) loop
-- **Location**: `agent/main.py`
-- **Auth**: GCP service account — `GCP_SERVICE_ACCOUNT_JSON` (Streamlit Cloud) or `GOOGLE_APPLICATION_CREDENTIALS` (local dev) + `GCP_PROJECT_ID`
-- **Temperature**: 0 (deterministic for data analysis)
-- **Recursion limit**: 9 steps per turn (configurable in `run_agent()` config)
-
-### 2. Tools
-| Tool | File | Description |
+| Layer | Technology | Active files |
 |---|---|---|
-| `oil_price_tool` | `agent/tools/oil_price_tool.py` | Live diesel/gasohol prices from Bangchak API; Thai and English fuel-name aliases; returns price + effective date |
-| `postgres_tool` | `agent/tools/postgres_tool.py` | SELECT queries against PostgreSQL; RLS enforced via `app.current_user_id` session config |
-| `ingredient_price_tool` | `agent/tools/ingredient_price_tool.py` | Ingredient market price lookup from `ingredient_market_prices` PostgreSQL table |
-| `platform_gp_lookup_tool` | `agent/tools/platform_gp_lookup_tool.py` | Returns gross profit % per delivery platform from the `platform_fee` table |
-| `rag_tool` | `agent/tools/rag_tool.py` | pgvector similarity search over `invoice_embeddings` — retrieves relevant invoice context |
-| `platform_floor_guard_tool` | `agent/tools/business_rules_tool.py` | Rule L1 — platform cost floor check; classifies as HEALTHY/WATCH/WARNING/CRITICAL |
-| `promo_profitability_tool` | `agent/tools/business_rules_tool.py` | Rule L3 — promo viability check; computes minimum viable price + psychological pricing |
-| `cogs_alert_tool` | `agent/tools/business_rules_tool.py` | Rule L4 — COGS impact alert with cuisine-group substitute ingredient map |
-| `scenario_classifier_tool` | `agent/tools/business_rules_tool.py` | Classifies business situation into Scenario 1/2/3 and returns an action plan |
-| `search_tool` | `agent/tools/search_tool.py` | Web search via DuckDuckGo — no API key required; fallback for general queries |
+| Frontend | Next.js | `frontend/app/*`, `frontend/components/*`, `frontend/lib/api.ts` |
+| Backend API | FastAPI | `api/main.py`, `api/routes/*`, `api/services/*` |
+| Agent | LangGraph ReAct | `agent/main.py` |
+| LLM | Vertex AI `ChatVertexAI` / Gemini | `FFIA_AGENT_MODEL`, `VERTEX_LOCATION`, `GCP_PROJECT_ID` |
+| Database | PostgreSQL/Supabase | `data/db.py`, `DATABASE_URL` |
+| Deployment target | Vercel + Cloud Run | Vercel frontend, Cloud Run backend |
+| Legacy app | Streamlit | `app/` exists but is not the active primary product path |
 
-**Security guardrails on PostgreSQL tool:**
-- Only `SELECT` statements accepted — mutations rejected at tool level
-- Results capped at 50 rows to control LLM context size
-- Row-Level Security (RLS) enforced at the database layer — each query is tenant-scoped to the authenticated `user_id`
+---
 
-**Business-rule tools source of truth:**
-- `platform_floor_guard_tool`, `promo_profitability_tool`, `cogs_alert_tool` → `docs/business_rules.md` (Rules L1, L3, L4)
-- `scenario_classifier_tool` → `docs/scenarios.md` (Scenario 1/2/3 selection logic)
+## Active Request Flow
 
-### 3. Prompts
-- **System prompt**: `agent/prompts/system_prompt.txt` — defines FFIA role, available tools, Bangkok/THB context, output format
-- **Tool descriptions**: docstrings on each `@tool` function — LangGraph reads these to decide when to call each tool
+```text
+User
+  |
+  v
+Next.js frontend
+  - login
+  - dashboard
+  - business setup
+  - OCR upload/review
+  - cost data
+  - AI chat
+  |
+  v
+FastAPI backend
+  - /health
+  - /login
+  - /chat
+  - /dashboard-summary
+  - /business-setup
+  - /invoices/*
+  |
+  v
+agent.main.run_agent()
+  |
+  v
+LangGraph ReAct agent
+  |
+  +--> postgres_tool -------------> PostgreSQL/Supabase
+  +--> ingredient_price_tool -----> PostgreSQL/Supabase
+  +--> oil_price_tool ------------> Bangchak Oil Price API
+  +--> search_tool ---------------> restricted web search fallback
+  +--> business rule tools -------> deterministic Python calculations
+  |
+  v
+FastAPI response
+  - answer
+  - lightweight tool-observation trace
+  |
+  v
+Next.js chat UI
+```
 
-### 4. Data Layer
-- **PostgreSQL**: Cloud-hosted (Supabase) — primary data source
-- Connection via `DATABASE_URL` in `.env`; helpers in `data/db.py` (psycopg2, no ORM)
-- **Row-Level Security**: `_apply_user_context(conn, user_id)` sets `app.current_user_id` PostgreSQL session variable; RLS policies enforce per-tenant isolation on all tables
-- **Tables managed by `data/db.py`**:
-  - `invoices` — invoice header records per user
-  - `invoice_items` — line items linked to each invoice
-  - `restaurant_profiles` — restaurant context and margin thresholds per user
-  - `restaurant_channel_mix` — per-platform revenue share and GP % per user
-  - `ingredient_market_prices` — reference ingredient prices (seeded from CSV)
-  - `invoice_embeddings` — pgvector embeddings of invoice chunks for RAG retrieval
+---
 
-### 5. Authentication
-- **Source**: `FFIA_AUTH_USERS_JSON` env var — JSON array of users with pre-hashed passwords
-- **Verification**: PBKDF2-SHA256 (390,000 iterations) via `app/utils/auth.py`
-- **Session**: `st.session_state["auth_user"]` — contains `user_id`, `username`, `display_name`
-- `user_id` doubles as the PostgreSQL tenant identifier for RLS
+## Frontend Architecture
 
-### 6. User Interface
-- **Framework**: Streamlit — modularized into views and components
-- **Entry point**: `app/main.py` — bootstrap only (auth wall, CSS injection, sidebar, page router)
-- **Views** (`app/views/`):
-  - `chat.py` — AI Assistant chat with reasoning trace expander and prompt chips
-  - `dashboard.py` — Decision cards, Quick Actions, current-month invoice list
-  - `profile.py` — Business Setup 3-step stepper (profile form → invoice upload → readiness review)
-  - `upload.py` — OCR invoice ingestion (Claude Vision) → editable form → PostgreSQL save + delete
-- **Components** (`app/components/`):
-  - `layout.py` — `_render_page_hero()`, `_render_section_header()`, `_load_logo_b64()`
-  - `sidebar.py` — `_render_sidebar()`, `_render_sidebar_nav_button()`
-- **Styles**: `app/styles/main_css.py` — global CSS theme injected via `st.markdown()`
-- **Sidebar**: Dark navy (`#0f172a`) with active/inactive CSS states, bottom-pinned account block
-- **Reasoning Transparency**: `st.expander` collapsed by default; shows tool name + observation per step
+The active UI is the Next.js app in `frontend/`.
+
+| Feature | Files | Current status |
+|---|---|---|
+| Login | `frontend/app/login/page.tsx`, `frontend/lib/auth.ts` | Sandbox login stores user context in localStorage |
+| App shell / nav | `frontend/components/AppShell.tsx`, `frontend/components/Sidebar.tsx` | Active |
+| Dashboard | `frontend/app/dashboard/page.tsx` | Uses `/dashboard-summary` |
+| Business setup | `frontend/app/setup/page.tsx`, `frontend/components/setup/*` | Saves profile/channel mix via `/business-setup` |
+| OCR upload/review | `frontend/components/setup/InvoiceUploadStep.tsx`, `frontend/app/upload/page.tsx` | Preview, edit, save via `/invoices/*` |
+| Cost data | `frontend/app/cost-data/page.tsx` | Invoice item review and exclusion |
+| AI Assistant | `frontend/app/chat/page.tsx` | Markdown rendering, loading animation, auto-scroll, trace details |
+
+Frontend environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | FastAPI backend origin |
+| `NEXT_PUBLIC_API_URL` | Backward-compatible API base fallback |
+| `NEXT_PUBLIC_API_TIMEOUT_MS` | Generic API timeout |
+| `NEXT_PUBLIC_CHAT_TIMEOUT_MS` | Chat timeout; `180000` recommended for production |
+
+---
+
+## Backend Architecture
+
+The active backend is `api/main.py`, which registers sandbox routes used by the
+current Next.js frontend.
+
+| Route | File | Purpose |
+|---|---|---|
+| `GET /health` | `api/routes/health.py` | Health check |
+| `POST /login` | `api/routes/login.py`, `api/services/auth_service.py` | Sandbox login |
+| `POST /chat` | `api/routes/chat.py`, `api/services/agent_service.py` | Calls `agent.main.run_agent()` |
+| `GET /dashboard-summary` | `api/routes/dashboard.py`, `api/services/dashboard_service.py` | Dashboard snapshot |
+| `/business-setup` | `api/routes/business_setup.py` | Profile/channel mix load and save |
+| `/invoices/*` | `api/routes/invoices.py` | OCR preview, reviewed save, invoice list/items, exclusion, delete |
+
+Legacy authenticated routers under `api/routers/` still exist and are registered
+when imports succeed, but the current Next.js frontend uses the sandbox routes
+above.
+
+Backend environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL/Supabase connection |
+| `ENVIRONMENT` | Runtime mode; `production` on Cloud Run |
+| `JWT_SECRET` | Required in production |
+| `FFIA_AUTH_USERS_JSON` | Login users with PBKDF2 password hashes |
+| `GCP_PROJECT_ID` | Vertex AI project |
+| `GCP_SERVICE_ACCOUNT_JSON` | Inline service account JSON or omit when using Cloud Run service account |
+| `VERTEX_LOCATION` | Vertex AI region |
+| `FFIA_AGENT_MODEL` | Gemini model name |
+| `CORS_ORIGINS` | Allowed frontend origins |
+| `FFIA_AGENT_TIMEOUT_SECONDS` | Agent service timeout; `150` recommended |
+
+---
+
+## Agent Architecture
+
+`agent/main.py` builds a lazy singleton LangGraph ReAct agent using
+`create_react_agent(...)` and `ChatVertexAI`.
+
+Key behavior:
+
+- System prompt is loaded from `agent/prompts/system_prompt.txt`.
+- Chat history is accepted and reduced to the latest turns.
+- `current_user_id` is bound to `postgres_tool` through a ContextVar.
+- Invoice questions may receive latest invoice context from `data.db.get_latest_invoice()`.
+- Profile/risk questions may receive latest restaurant profile context from
+  `data.db.fetch_latest_restaurant_profile()`.
+- The public contract is `run_agent(...) -> {"output": str, "intermediate_steps": [...]}`.
+
+### Active Registered Tools
+
+These tools are actually registered in `agent/main.py` and reachable from the
+AI Assistant chat flow.
+
+| Tool | File | Current role | Depends on |
+|---|---|---|---|
+| `postgres_tool` | `agent/tools/postgres_tool.py` | SELECT-only PostgreSQL queries with tenant context | `DATABASE_URL`, current user |
+| `search_tool` | `agent/tools/search_tool.py` | Restricted search fallback | `ddgs` or `TAVILY_API_KEY` |
+| `oil_price_tool` | `agent/tools/oil_price_tool.py` | Live fuel price lookup | Bangchak API |
+| `ingredient_price_tool` | `agent/tools/ingredient_price_tool.py` | Reference ingredient price lookup | `ingredient_market_prices` |
+| `platform_floor_guard_tool` | `agent/tools/business_rules_tool.py` | Partial L1 platform floor calculation | LLM/tool inputs |
+| `promo_profitability_tool` | `agent/tools/business_rules_tool.py` | Partial L3 promo viability calculation | LLM/tool inputs |
+| `cogs_alert_tool` | `agent/tools/business_rules_tool.py` | Partial L4 COGS impact calculation | LLM/tool inputs |
+| `scenario_classifier_tool` | `agent/tools/business_rules_tool.py` | Scenario 1/2/3 helper | LLM/tool inputs |
+
+### Exists But Not Wired
+
+These files/capabilities exist but are not active product features:
+
+| Item | Current status |
+|---|---|
+| `agent/tools/rag_tool.py` | Exists, but `rag_cost_history_tool` is not registered in `agent/main.py` |
+| `invoice_embeddings` | Schema helper exists in `data/db.py`, but indexing/retrieval is not wired into upload/save/chat |
+| `agent/tools/platform_gp_lookup_tool.py` | Exists and has tests, but is not registered in the active agent |
+| `ingredient_aliases` / `ingredient_matching_template.csv` | Seed path exists, but product lookup does not use aliases |
+| `pg_trgm` fuzzy matching | Not implemented |
+| Fuzzy ingredient search | Not implemented |
+| Deterministic menu margin calculator | Planned future tool |
+| L2 Cross-Platform Margin Arbitrage | Documented only |
+| L5 Dynamic Delivery Radius Control | Documented only |
+
+Do not demo these as active features.
+
+---
+
+## Data Layer
+
+PostgreSQL/Supabase is the main data source and the single source of truth for
+restaurant profile, channel mix, invoice, and invoice item data.
+
+| Table | Current product usage |
+|---|---|
+| `restaurant_profiles` | Business setup, dashboard profile snapshot, agent profile context |
+| `restaurant_channel_mix` | Business setup, dashboard channel mix, agent SQL context |
+| `invoices` | OCR save/list/dashboard/agent latest invoice context |
+| `invoice_items` | OCR save/list/top spend/exclusion/agent SQL context |
+| `ingredient_market_prices` | `ingredient_price_tool` lookup |
+| `platform_fee` | Global reference table; queryable through `postgres_tool`; dedicated lookup tool is not registered |
+| `invoice_embeddings` | Future RAG schema only; not wired |
+| `ingredient_aliases` | Future fuzzy/alias matching only; not wired |
+
+Tenant handling:
+
+- `data.db.get_connection(user_id)` sets `app.current_user_id`.
+- Invoice helpers require `user_id`.
+- `postgres_tool` replaces the literal `'current_user_placeholder'` with the
+  current authenticated user.
+- `invoice_items.excluded_from_analysis` is used by dashboard/top spend and
+  agent SQL guidance to omit non-business items by default.
+
+---
+
+## OCR / Invoice Flow
+
+```text
+User uploads image
+  -> frontend/components/setup/InvoiceUploadStep.tsx
+  -> POST /invoices/ocr-preview
+  -> app/utils/ocr.py::extract_invoice_data()
+  -> editable review state in React
+  -> POST /invoices/save
+  -> data.db.save_invoice()
+  -> dashboard / invoice list / cost-data page
+```
+
+Current status:
+
+- OCR extraction uses Gemini Vision through `ChatVertexAI`.
+- Header fields are editable before save.
+- Line items are editable before save.
+- Edited values are saved through the current save payload.
+- Saved invoice items can be excluded/restored from analysis.
+- OCR confidence confirmation is documented in business rules but not
+  implemented as a confidence-driven product flow.
+
+---
+
+## Business Rules Status
+
+| Rule | Current implementation |
+|---|---|
+| L1 Platform Cost Floor Guard | Partially implemented as `platform_floor_guard_tool`; active agent can call it when inputs are available |
+| L2 Cross-Platform Margin Arbitrage | Documented only; not implemented as tool or product flow |
+| L3 Promo Profitability Guard | Partially implemented as `promo_profitability_tool`; active agent has prompt/input guidance |
+| L4 Raw Material COGS Alert | Partially implemented as `cogs_alert_tool`; simplified assumptions |
+| L5 Dynamic Delivery Radius Control | Documented only; not implemented as tool or product flow |
+| Scenario 1/2/3 classifier | Implemented as helper tool; depends on supplied/derived inputs |
+
+Business-rule tools are useful for MVP guidance, but they are not a complete
+deterministic margin engine.
+
+---
+
+## Reasoning Trace / Auditability
+
+The AI Assistant exposes lightweight trace details:
+
+- Tool name
+- Tool observation text
+- Any returned error marker
+
+This is not hidden chain-of-thought. It is an audit-friendly summary of
+observable tool calls and data sources. The agent prompt also asks for a short
+data-source footer in answers, but exact footer quality depends on the LLM turn.
+
+Current status: partial but demoable.
+
+Future auditability improvements:
+
+- Persist traces server-side.
+- Add structured source tags per answer.
+- Add deterministic calculator outputs for menu margin and scenarios.
+
+---
+
+## Timeout / Reliability Notes
+
+Chat requests can take longer than ordinary API requests because the agent may
+call external APIs, PostgreSQL, and multiple tools.
+
+Recommended production settings:
+
+| Layer | Recommended timeout |
+|---|---|
+| Frontend chat timeout | `NEXT_PUBLIC_CHAT_TIMEOUT_MS=180000` |
+| Backend agent timeout | `FFIA_AGENT_TIMEOUT_SECONDS=150` |
+| Cloud Run request timeout | `300s` |
+
+Rule: frontend timeout should exceed backend agent timeout so users receive the
+backend's graceful timeout message instead of a browser-side abort.
+
+Known reliability considerations:
+
+- Bangchak API/network failures are handled as tool errors or null dashboard oil data.
+- Database failures return user-friendly dashboard/API errors where implemented.
+- Long or broad agent questions may hit recursion/timeout limits.
+- RAG/fuzzy matching should not be included in reliability claims because those
+  paths are not wired into the product flow.
 
 ---
 
@@ -179,93 +316,34 @@ business_rules_tool (×4)
 
 | File | Purpose |
 |---|---|
-| `agent/main.py` | LangGraph agent setup, `run_agent()` public function, `_extract_text()` Gemini content normalizer |
-| `agent/tools/oil_price_tool.py` | Live oil price from Bangchak API — Thai/English aliases, date fields |
-| `agent/tools/business_rules_tool.py` | Business-rule tools: L1 platform floor guard, L3 promo profitability, L4 COGS alert, scenario classifier |
-| `agent/tools/postgres_tool.py` | PostgreSQL SELECT tool for agent — RLS-enforced, 50-row cap |
-| `agent/tools/ingredient_price_tool.py` | Ingredient market price lookup from PostgreSQL reference table |
-| `agent/tools/platform_gp_lookup_tool.py` | Per-platform GP % lookup from `platform_fee` table |
-| `agent/tools/rag_tool.py` | pgvector invoice embedding similarity search |
-| `agent/tools/search_tool.py` | DuckDuckGo web search tool |
-| `agent/prompts/system_prompt.txt` | Agent role, tool guidance, Bangkok/THB context, output format |
-| `app/main.py` | Streamlit bootstrap — auth wall, CSS injection, DB setup, sidebar render, page router |
-| `app/views/chat.py` | AI Assistant chat page — prompt chips, agent turn, reasoning trace |
-| `app/views/dashboard.py` | Dashboard page — decision cards, Quick Actions, invoice list |
-| `app/views/profile.py` | Business Setup 3-step stepper — profile form, upload, readiness review |
-| `app/views/upload.py` | Data Upload page — OCR ingestion, invoice form, save/delete |
-| `app/components/layout.py` | Shared page hero, section header, logo loader |
-| `app/components/sidebar.py` | Sidebar nav and brand block |
-| `app/styles/main_css.py` | Global CSS theme string |
-| `app/utils/auth.py` | User authentication — PBKDF2 password verification, session helpers |
-| `app/utils/ocr.py` | Claude Vision OCR — extracts invoice fields and line items from uploaded images |
-| `data/db.py` | PostgreSQL helpers — invoice CRUD, profile upsert/fetch, RAG schema, RLS context setup |
-| `requirements.txt` | Python dependencies |
-| `.env` | Secrets — never committed (see `.env.example`) |
+| `frontend/lib/api.ts` | Frontend API client and timeouts |
+| `frontend/app/chat/page.tsx` | AI Assistant UI, markdown rendering, loading animation, auto-scroll, trace details |
+| `frontend/components/setup/InvoiceUploadStep.tsx` | OCR upload, editable review, save, invoice list |
+| `frontend/app/cost-data/page.tsx` | Invoice item review and exclusion |
+| `api/main.py` | FastAPI app and route registration |
+| `api/routes/chat.py` | Active chat route |
+| `api/services/agent_service.py` | Agent timeout, DB-first routing hint, `run_agent()` adapter |
+| `api/services/dashboard_service.py` | Dashboard summary aggregation |
+| `api/routes/invoices.py` | Active OCR/invoice endpoints |
+| `agent/main.py` | LangGraph ReAct setup and `run_agent()` |
+| `agent/tools/postgres_tool.py` | Tenant-aware SELECT-only SQL tool |
+| `agent/tools/business_rules_tool.py` | Partial L1/L3/L4/scenario tools |
+| `app/utils/ocr.py` | Gemini Vision OCR extraction |
+| `data/db.py` | PostgreSQL helpers |
 
 ---
 
-## Environment Variables
+## Planned Future Implementation
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection URL (`postgresql://user:pass@host:5432/db`) |
-| `FFIA_AUTH_USERS_JSON` | Yes | JSON array of users with `username`, `display_name`, `password_hash` |
-| `GCP_PROJECT_ID` | Yes | GCP project ID — required by Vertex AI for both agent LLM and invoice OCR |
-| `GCP_SERVICE_ACCOUNT_JSON` | Yes | Full service account key JSON (single-line string) — used by agent and OCR on Streamlit Cloud |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Local dev | Path to GCP key JSON file — used when `GCP_SERVICE_ACCOUNT_JSON` is not set |
-
----
-
-## run_agent() Contract
-
-```python
-run_agent(
-    user_message: str,
-    chat_history: list = None,
-    callbacks: list = None,
-    current_user_id: str | None = None,
-) -> dict
-```
-
-Returns:
-```python
-{
-    "output": str,                          # Final answer — plain string
-    "intermediate_steps": [                 # Tool calls made during reasoning
-        ("tool_name", "observation_text"),  # One tuple per tool invocation
-        ...
-    ]
-}
-```
-
-`_extract_text()` normalizes Gemini 2.5 Flash's content block format (`[{'type':'text','text':'...'}]`) to a plain string before returning.
+- Wire RAG indexing after invoice save and register `rag_cost_history_tool`.
+- Add fuzzy ingredient matching using aliases and/or `pg_trgm`.
+- Register or replace `platform_gp_lookup_tool` with deterministic platform fee resolution.
+- Add deterministic menu margin calculator tool.
+- Add L2 Cross-Platform Margin Arbitrage tool.
+- Add L5 Dynamic Delivery Radius Control tool.
+- Add checked-in Cloud Run deployment artifacts such as `Dockerfile` or `cloudbuild.yaml`.
+- Persist reasoning/audit traces for post-hoc review.
 
 ---
 
-## Security Boundaries
-- All secrets loaded from `.env` via `python-dotenv` — never hardcoded
-- GCP service account credentials loaded from `GCP_SERVICE_ACCOUNT_JSON` env var (Streamlit Cloud) or `GOOGLE_APPLICATION_CREDENTIALS` file path (local dev)
-- PostgreSQL tool rejects any non-SELECT SQL at the tool level
-- Query results capped at 50 rows before passing to LLM
-- Row-Level Security enforced at DB layer — `set_postgres_tool_user_id()` / `reset_postgres_tool_user_id()` bracket every agent invocation
-
----
-
-## Completed Milestones
-
-| Week | Deliverable |
-|---|---|
-| W1 | LangGraph ReAct agent, Gemini 2.5 Flash, DuckDuckGo search tool, dark sidebar UI |
-| W2 | PostgreSQL integration, invoice CRUD (`data/db.py`), RLS tenant isolation, user authentication |
-| W3 | Bangchak oil price tool, 4 business-rule tools (L1/L3/L4/Scenario Classifier), OCR invoice upload (Claude Vision), Data Upload page, Business Profile Settings page, platform channel assets |
-| W4 | App modularized into `app/views/` + `app/components/` + `app/styles/`; ingredient price tool; platform GP lookup tool; RAG vector search tool (`rag_tool.py`); `invoice_embeddings` table with pgvector; 3-step Business Setup stepper; invoice delete UI; Vertex AI service account auth |
-
-## Planned Next
-- [x] `GraphRecursionError` graceful UI fallback — `app/views/chat.py` surfaces user-friendly Thai message
-- [ ] `calculate_margin` tool — compute true net margin per menu item using invoice and profile data
-- [ ] `simulate_scenario` tool — what-if oil price sensitivity analysis
-- [ ] Multi-agent: Planner → Data Agent + Margin Agent + Recommendation Agent
-
----
-
-*Last updated: W4 complete — UI modularized into views/components, RAG tool, ingredient price tool, platform GP lookup, 3-step stepper, invoice delete, Vertex AI auth, GraphRecursionError graceful fallback.*
+*Last updated for submission: active Next.js + FastAPI product path, registered agent tools only, RAG/fuzzy/L2/L5 clearly marked as future work.*
