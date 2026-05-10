@@ -1,4 +1,5 @@
 // Step 4: AI Risk Profile — summary card, capability tags, alert cards, save
+import Link from "next/link";
 import type { BusinessSetupChannel, BusinessSetupProfile } from "@/lib/api";
 
 // Step 4a: LPG-intensive food types (from profile.py)
@@ -172,15 +173,18 @@ const ALERT_STYLES = {
   opportunity: { typeLabel: "✓ Opportunity", color: "#3d9068", bg: "rgba(90,175,132,0.07)",   border: "rgba(90,175,132,0.45)", borderW: "1px"   },
 };
 
+const ADVISOR_PROMPT = "จากโปรไฟล์ร้านและความเสี่ยงที่วิเคราะห์ไว้ ช่วยแนะนำ 3 สิ่งที่ควรแก้ก่อนเพื่อรักษากำไร";
+
 interface Props {
   profile: BusinessSetupProfile;
   channels: BusinessSetupChannel[];
   onSave: () => void;
   onBack: () => void;
   saving: boolean;
+  saved: boolean;
 }
 
-export default function RiskProfileStep({ profile, channels, onSave, onBack, saving }: Props) {
+export default function RiskProfileStep({ profile, channels, onSave, onBack, saving, saved }: Props) {
   const nm      = computeNetMargin(channels, profile);
   const summary = buildAiSummary(profile, channels);
   const insight = buildFuelInsight(profile, nm);
@@ -292,7 +296,7 @@ export default function RiskProfileStep({ profile, channels, onSave, onBack, sav
       )}
 
       {/* Step 4n: Navigation */}
-      <div className="mt-6 flex items-center justify-between">
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <button
           type="button"
           onClick={onBack}
@@ -300,14 +304,32 @@ export default function RiskProfileStep({ profile, channels, onSave, onBack, sav
         >
           ← Back
         </button>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={!canSave || saving}
-          className="rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {saving ? "Saving..." : "Apply optimization plan →"}
-        </button>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <p className="max-w-xs text-xs font-semibold leading-5 text-slate-500 sm:text-right">
+            {saved
+              ? "บันทึกแล้ว ให้ FFIA Advisor ช่วยจัดลำดับสิ่งที่ควรแก้ก่อน"
+              : "บันทึกข้อมูลร้านก่อน เพื่อให้ FFIA ใช้ข้อมูลล่าสุดในการวิเคราะห์"}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            {saved ? (
+              <Link
+                href={`/chat?prompt=${encodeURIComponent(ADVISOR_PROMPT)}`}
+                className="rounded-xl border border-orange-200 bg-white px-4 py-2.5 text-sm font-black text-orange-700 transition hover:bg-orange-50"
+              >
+                ให้ FFIA Advisor วิเคราะห์ต่อ →
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={!canSave || saving}
+                className="rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {saving ? "Saving..." : "บันทึกโปรไฟล์ร้าน →"}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

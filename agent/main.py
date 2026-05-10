@@ -381,6 +381,25 @@ def _extract_intermediate_steps(messages: list) -> list[tuple[str, str]]:
     return intermediate_steps
 
 
+def _build_prefetch_trace(
+    latest_invoice: dict | None = None,
+    restaurant_profile: dict | None = None,
+) -> list[tuple[str, str]]:
+    """Return short source-only trace entries for direct DB prefetches."""
+    trace = []
+    if restaurant_profile:
+        trace.append((
+            "postgres_tool",
+            "โหลดข้อมูลโปรไฟล์ร้านจาก PostgreSQL: restaurant_profiles, restaurant_channel_mix",
+        ))
+    if latest_invoice:
+        trace.append((
+            "postgres_tool",
+            "โหลดข้อมูลใบเสร็จล่าสุดจาก PostgreSQL: invoices, invoice_items",
+        ))
+    return trace
+
+
 # Step 11: Public function called by app/main.py
 def run_agent(
     user_message: str,
@@ -474,6 +493,11 @@ def run_agent(
     # Step 10e: Extract intermediate steps (tool calls + observations) for the UI trace
     # Also normalize ToolMessage content to plain string
     intermediate_steps = _extract_intermediate_steps(messages)
+    if not intermediate_steps:
+        intermediate_steps = _build_prefetch_trace(
+            latest_invoice=latest_invoice,
+            restaurant_profile=restaurant_profile,
+        )
 
     return {"output": output, "intermediate_steps": intermediate_steps}
 

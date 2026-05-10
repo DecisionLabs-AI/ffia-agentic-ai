@@ -24,10 +24,29 @@ const steps = [
     cta: "อัปโหลดใบเสร็จ",
   },
   {
-    title: "ถาม FFIA",
+    title: "ถาม FFIA Advisor",
     text: "ถามเรื่องราคา โปรโมชัน น้ำมัน และมาร์จิ้นแบบตรงจุด",
     href: "/chat",
-    cta: "ถาม FFIA ตอนนี้",
+    cta: "ถาม FFIA Advisor",
+  },
+];
+
+const capabilities = [
+  {
+    title: "Margin Risk",
+    text: "เมนูไหนกำไรบาง",
+  },
+  {
+    title: "Delivery GP",
+    text: "แพลตฟอร์มไหนกินกำไร",
+  },
+  {
+    title: "Cost Spike",
+    text: "วัตถุดิบไหนเริ่มแพง",
+  },
+  {
+    title: "Promo Guard",
+    text: "โปรไหนยังคุ้ม",
   },
 ];
 
@@ -51,7 +70,7 @@ export default function Home() {
                 href="/chat"
                 className="rounded-xl bg-orange-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700"
               >
-                ถาม FFIA ตอนนี้
+                เริ่มวิเคราะห์กับ FFIA →
               </Link>
               <Link
                 href="/dashboard"
@@ -102,16 +121,21 @@ export default function Home() {
         </div>
 
         <div className="mt-8 rounded-3xl border border-orange-100 bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-black text-slate-950">ทางลัดสำหรับเดโม</h2>
-          <div className="mt-4 flex flex-wrap gap-3">
-            {quickQuestions.map((question) => (
-              <Link
-                key={question}
-                href={`/chat?q=${encodeURIComponent(question)}`}
-                className="rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-800 transition hover:border-orange-300 hover:bg-orange-100"
+          <h2 className="text-xl font-black text-slate-950">FFIA วิเคราะห์อะไรให้คุณได้บ้าง</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            จากโปรไฟล์ร้าน ใบเสร็จ และช่องทางขาย FFIA ช่วยแปลข้อมูลต้นทุนเป็นคำแนะนำที่ตัดสินใจได้ทันที
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {capabilities.map((capability) => (
+              <div
+                key={capability.title}
+                className="rounded-2xl border border-orange-100 bg-orange-50/50 p-4 shadow-sm"
               >
-                {question}
-              </Link>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-orange-600">
+                  {capability.title}
+                </p>
+                <p className="mt-2 text-sm font-bold text-slate-800">{capability.text}</p>
+              </div>
             ))}
           </div>
         </div>

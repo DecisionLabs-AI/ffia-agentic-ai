@@ -86,11 +86,13 @@ export default function SetupPage() {
 
   // Step 5: Profile field updater
   function updateProfile<K extends keyof BusinessSetupProfile>(key: K, value: BusinessSetupProfile[K]) {
+    setSaveOk(false);
     setProfile((prev) => ({ ...prev, [key]: value }));
   }
 
   // Step 6: Channel field updater
   function updateChannel(index: number, patch: Partial<BusinessSetupChannel>) {
+    setSaveOk(false);
     setChannelMix((prev) => prev.map((ch, i) => (i === index ? { ...ch, ...patch } : ch)));
   }
 
@@ -262,6 +264,7 @@ export default function SetupPage() {
                   onSave={handleSave}
                   onBack={() => setStep(4)}
                   saving={saving}
+                  saved={saveOk}
                 />
               )}
             </div>

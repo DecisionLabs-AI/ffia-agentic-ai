@@ -100,8 +100,8 @@ function ChatExperience({ user }: { user: AuthUser }) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const q = params.get("q");
-    if (q) setInput(q);
+    const prompt = params.get("prompt") || params.get("q");
+    if (prompt) setInput(prompt);
   }, []);
 
   useEffect(() => {
@@ -215,8 +215,8 @@ function ChatExperience({ user }: { user: AuthUser }) {
     <AppShell>
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-orange-600">AI business advisor</p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950">ถาม FFIA</h1>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-orange-600">AI BUSINESS ADVISOR</p>
+          <h1 className="mt-2 text-3xl font-black text-slate-950">FFIA Advisor</h1>
           <p className="mt-2 text-sm text-slate-600">ถามแบบเจ้าของร้าน: คุ้มไหม แพงตรงไหน กระทบกำไรเท่าไร และควรทำอะไรก่อน</p>
         </div>
 

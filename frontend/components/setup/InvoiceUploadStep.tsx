@@ -19,6 +19,8 @@ import {
   OCRPreviewResponse,
 } from "@/lib/api";
 
+const INVOICE_ADVISOR_PROMPT = "จากใบเสร็จล่าสุด ช่วยวิเคราะห์วัตถุดิบที่กระทบต้นทุนมากที่สุด";
+
 interface Props {
   userId: string;
   onNext: () => void;
@@ -325,8 +327,16 @@ export default function InvoiceUploadStep({ userId, onNext, onBack, onCancel }: 
 
       {/* Step 12: Invoice save success banner */}
       {saveOk && (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-          ✓ Invoice <strong>{savedNo}</strong> saved successfully.
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+          <span>
+            ✓ Invoice <strong>{savedNo}</strong> saved successfully.
+          </span>
+          <Link
+            href={`/chat?prompt=${encodeURIComponent(INVOICE_ADVISOR_PROMPT)}`}
+            className="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-black text-emerald-700 transition hover:bg-emerald-50"
+          >
+            ให้ FFIA วิเคราะห์ใบเสร็จนี้ →
+          </Link>
         </div>
       )}
 
