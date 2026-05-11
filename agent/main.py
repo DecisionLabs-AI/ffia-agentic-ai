@@ -60,6 +60,7 @@ def _load_system_prompt() -> str:
 # Defaults keep behaviour identical to the previous hardcoded values.
 _AGENT_MODEL     = os.getenv("FFIA_AGENT_MODEL", "gemini-2.5-flash")
 _VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "asia-southeast1")
+_MAX_OUTPUT_TOKENS = int(os.getenv("FFIA_MAX_OUTPUT_TOKENS", "8192"))
 
 
 def _validate_env():
@@ -100,7 +101,7 @@ def _get_agent():
             location=_VERTEX_LOCATION,
             credentials=_credentials,
             temperature=0,
-            max_output_tokens=4096,
+            max_output_tokens=_MAX_OUTPUT_TOKENS,
         )
         # Step 7b: Build agent graph (Thought/Action/Observation loop)
         _agent_instance = create_react_agent(

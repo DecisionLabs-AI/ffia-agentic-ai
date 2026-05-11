@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import AppShell from "@/components/AppShell";
 import AuthGuard from "@/components/AuthGuard";
 import { AuthUser } from "@/lib/auth";
@@ -72,6 +73,7 @@ function AssistantAvatar() {
 function AssistantMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
       components={{
         h1: ({ children }) => <h1 className="mb-2 text-lg font-black leading-7 text-slate-950">{children}</h1>,
         h2: ({ children }) => <h2 className="mb-2 text-base font-black leading-7 text-slate-950">{children}</h2>,
@@ -81,6 +83,13 @@ function AssistantMarkdown({ content }: { content: string }) {
         ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
         ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
         li: ({ children }) => <li className="pl-1">{children}</li>,
+        table: ({ children }) => (
+          <div className="my-3 overflow-x-auto">
+            <table className="w-full border-collapse text-left text-xs leading-5">{children}</table>
+          </div>
+        ),
+        th: ({ children }) => <th className="border border-slate-200 bg-slate-50 px-3 py-2 font-black text-slate-900">{children}</th>,
+        td: ({ children }) => <td className="border border-slate-200 px-3 py-2 align-top">{children}</td>,
       }}
     >
       {content}
