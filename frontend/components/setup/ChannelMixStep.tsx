@@ -2,6 +2,7 @@
 // Step 3: Platform & Revenue — channel cards (2×2 grid) + blended margin preview
 import Image from "next/image";
 import type { BusinessSetupChannel, BusinessSetupProfile } from "@/lib/api";
+import { validateChannelMix } from "@/lib/businessSetupValidation";
 
 // Step 3a: Channel metadata — logo path, whether platform fee is editable
 const CHANNEL_META: {
@@ -71,9 +72,10 @@ function computeBlendedMargin(
   };
 }
 
-function numberValue(v: string): number {
+function percentValue(v: string): number {
   const p = Number(v);
-  return Number.isFinite(p) ? p : 0;
+  if (!Number.isFinite(p)) return 0;
+  return Math.min(100, Math.max(0, p));
 }
 
 interface Props {
@@ -93,9 +95,10 @@ export default function ChannelMixStep({
   onBack,
   onCancel,
 }: Props) {
-  const activeChannels = channels.filter((c) => c.is_active);
-  const totalRevShare  = activeChannels.reduce((s, c) => s + c.revenue_share_pct, 0);
-  const revShareOk     = Math.abs(totalRevShare - 100) <= 0.5;
+  const channelValidation = validateChannelMix(channels);
+  const activeChannels = channelValidation.activeChannels;
+  const totalRevShare  = channelValidation.totalRevenueShare;
+  const revShareOk     = channelValidation.isValid;
 
   const preview = computeBlendedMargin(
     channels,
@@ -116,7 +119,7 @@ export default function ChannelMixStep({
   const deliveryRev = channels
     .filter((c) => c.is_active && ["Grab Food","LINE MAN","Shopee Food"].includes(c.platform))
     .reduce((s, c) => s + c.revenue_share_pct, 0);
-  const walkinRev = channels.find((c) => c.platform === "Walk-in / Self-pickup")?.revenue_share_pct ?? 0;
+  const walkinRev = activeChannels.find((c) => c.platform === "Walk-in / Self-pickup")?.revenue_share_pct ?? 0;
 
   function channelInsight(): string {
     if (deliveryRev >= 70)
@@ -126,14 +129,36 @@ export default function ChannelMixStep({
     return "💡 Your channel mix looks balanced across delivery and direct sales.";
   }
 
+  const metricCards = [
+    {
+      label: "Avg GP Cost",
+      value: `${preview.blendedGpPct.toFixed(1)}%`,
+      tooltip: "สูตร: Σ(Revenue Share × Platform Fee) / 100 จากช่องทางที่ Active",
+    },
+    {
+      label: "Est. Food Cost",
+      value: `${preview.foodCostPct.toFixed(1)}%`,
+      tooltip: "ค่าประมาณจากประเภทอาหารและ store setup benchmark ใช้เพื่อ preview เท่านั้น",
+    },
+    {
+      label: "Est. Fixed Cost",
+      value: `${preview.fixedCostPct.toFixed(1)}%`,
+      tooltip: "ค่าประมาณค่าใช้จ่ายคงที่ เช่น ค่าเช่า ค่าแรง ค่าน้ำไฟ ใช้เพื่อ preview เท่านั้น",
+    },
+    {
+      label: "Est. Net Margin",
+      value: `${preview.netMarginPct.toFixed(1)}%`,
+      tooltip: `สูตร: 100 - AVG GP COST - EST. FOOD COST - EST. FIXED COST ตัวอย่าง: 100 - ${preview.blendedGpPct.toFixed(1)} - ${preview.foodCostPct.toFixed(1)} - ${preview.fixedCostPct.toFixed(1)} = ${preview.netMarginPct.toFixed(1)}%`,
+    },
+  ];
+
   // Step 3f: Validate before advancing
   function handleNext() {
-    if (!activeChannels.length) return;
-    if (!revShareOk) return;
+    if (!channelValidation.isValid) return;
     onNext();
   }
 
-  const canAdvance = activeChannels.length > 0 && revShareOk;
+  const canAdvance = channelValidation.isValid;
 
   return (
     <div>
@@ -207,7 +232,10 @@ export default function ChannelMixStep({
                       max={100}
                       value={ch.revenue_share_pct}
                       onChange={(e) =>
-                        onUpdateChannel(channelIndex, { revenue_share_pct: numberValue(e.target.value) })
+                        onUpdateChannel(channelIndex, { revenue_share_pct: percentValue(e.target.value) })
+                      }
+                      onBlur={(e) =>
+                        onUpdateChannel(channelIndex, { revenue_share_pct: percentValue(e.target.value) })
                       }
                       className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
                     />
@@ -223,7 +251,10 @@ export default function ChannelMixStep({
                         max={100}
                         value={ch.platform_fee_pct}
                         onChange={(e) =>
-                          onUpdateChannel(channelIndex, { platform_fee_pct: numberValue(e.target.value) })
+                          onUpdateChannel(channelIndex, { platform_fee_pct: percentValue(e.target.value) })
+                        }
+                        onBlur={(e) =>
+                          onUpdateChannel(channelIndex, { platform_fee_pct: percentValue(e.target.value) })
                         }
                         className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
                       />
@@ -244,7 +275,7 @@ export default function ChannelMixStep({
       <div className="mt-4">
         {activeChannels.length === 0 ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800">
-            Enable at least one channel to continue.
+            กรุณาเลือกช่องทางขายอย่างน้อย 1 ช่องทาง
           </div>
         ) : revShareOk ? (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800">
@@ -252,7 +283,10 @@ export default function ChannelMixStep({
           </div>
         ) : (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800">
-            Enabled channels total <strong>{totalRevShare.toFixed(0)}%</strong> — must add up to 100%. Adjust the values above.
+            สัดส่วนรายได้ของช่องทางที่เลือกต้องรวมกันเป็น 100%
+            <span className="ml-1 text-amber-700">
+              (ตอนนี้รวม <strong>{totalRevShare.toFixed(0)}%</strong>)
+            </span>
           </div>
         )}
       </div>
@@ -268,14 +302,21 @@ export default function ChannelMixStep({
 
         {/* Step 3j-i: 4 metric tiles */}
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            { label: "Avg GP Cost",     value: `${preview.blendedGpPct.toFixed(1)}%`  },
-            { label: "Est. Food Cost",  value: `${preview.foodCostPct.toFixed(1)}%`   },
-            { label: "Est. Fixed Cost", value: `${preview.fixedCostPct.toFixed(1)}%`  },
-            { label: "Est. Net Margin", value: `${preview.netMarginPct.toFixed(1)}%`  },
-          ].map((m) => (
+          {metricCards.map((m) => (
             <div key={m.label} className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-center">
-              <p className="text-[0.65rem] font-bold uppercase tracking-wide text-slate-500">{m.label}</p>
+              <p className="flex items-center justify-center gap-1 text-[0.65rem] font-bold uppercase tracking-wide text-slate-500">
+                <span>{m.label}</span>
+                <span
+                  aria-label={`${m.label} info`}
+                  className="group relative inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full text-[0.65rem] font-black leading-none text-slate-400 outline-none transition hover:text-slate-600 focus-visible:text-slate-600"
+                  tabIndex={0}
+                >
+                  ⓘ
+                  <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-[0.7rem] font-semibold normal-case leading-4 text-slate-600 opacity-0 shadow-lg shadow-slate-900/10 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
+                    {m.tooltip}
+                  </span>
+                </span>
+              </p>
               <p className="mt-1 text-lg font-black text-slate-900">{m.value}</p>
             </div>
           ))}

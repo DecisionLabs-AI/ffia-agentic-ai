@@ -1,6 +1,6 @@
 "use client";
 
-// Step 1: Business Setup wizard orchestrator — manages 4-step stepper state,
+// Step 1: Business Setup wizard orchestrator — manages 5-step stepper state,
 // loads/saves data, delegates rendering to step components.
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
@@ -16,6 +16,7 @@ import {
   saveBusinessSetup,
 } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
+import { validateChannelMix } from "@/lib/businessSetupValidation";
 
 // Step 2: Default channel values (shown when no saved data exists)
 const DEFAULT_CHANNELS: BusinessSetupChannel[] = [
@@ -46,15 +47,37 @@ const STEPS = [
   { label: "AI Risk Profile"    },
 ] as const;
 
+const BUSINESS_SETUP_STEP_FALLBACK_KEY = "ffia_business_setup_step";
+
+function businessSetupStepKey(userId?: string): string {
+  return userId ? `ffia_business_setup_step_${userId}` : BUSINESS_SETUP_STEP_FALLBACK_KEY;
+}
+
+function isValidSetupStep(value: number): value is 1 | 2 | 3 | 4 | 5 {
+  return Number.isInteger(value) && value >= 1 && value <= STEPS.length;
+}
+
+function readStoredSetupStep(userId?: string): 1 | 2 | 3 | 4 | 5 | null {
+  if (typeof window === "undefined") return null;
+  const parsed = Number(localStorage.getItem(businessSetupStepKey(userId)));
+  return isValidSetupStep(parsed) ? parsed : null;
+}
+
+function persistSetupStep(userId: string | undefined, nextStep: number): void {
+  if (typeof window === "undefined" || !isValidSetupStep(nextStep)) return;
+  localStorage.setItem(businessSetupStepKey(userId), String(nextStep));
+}
+
 export default function SetupPage() {
   const [userId,     setUserId    ] = useState("");
-  const [step,       setStep      ] = useState(1);           // 1–4
+  const [step,       setStep      ] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [profile,    setProfile   ] = useState<BusinessSetupProfile>(EMPTY_PROFILE);
   const [channelMix, setChannelMix] = useState<BusinessSetupChannel[]>(DEFAULT_CHANNELS);
   const [loading,    setLoading   ] = useState(true);
   const [saving,     setSaving    ] = useState(false);
   const [saveOk,     setSaveOk    ] = useState(false);
   const [loadError,  setLoadError ] = useState("");
+  const [setupSaved, setSetupSaved] = useState(false);
 
   // Step 4: Load existing data on mount; honour ?step=upload deep-link
   useEffect(() => {
@@ -63,7 +86,11 @@ export default function SetupPage() {
     setUserId(user.user_id);
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get("step") === "upload") setStep(4);
+    const deepLinkedStep = params.get("step") === "upload" ? 4 : null;
+    const restoredStep = readStoredSetupStep(user.user_id);
+    const initialStep = deepLinkedStep ?? restoredStep ?? 1;
+    setStep(initialStep);
+    persistSetupStep(user.user_id, initialStep);
 
     (async () => {
       setLoading(true);
@@ -73,7 +100,12 @@ export default function SetupPage() {
       }
       try {
         const data = await getBusinessSetup(user.user_id);
-        if (data.profile)              setProfile({ ...EMPTY_PROFILE, ...data.profile });
+        if (data.profile) {
+          setProfile({ ...EMPTY_PROFILE, ...data.profile });
+          setSetupSaved(true);
+        } else {
+          setSetupSaved(false);
+        }
         if (data.channel_mix?.length)  setChannelMix(data.channel_mix);
         if (data.error)                setLoadError(data.error);
       } catch {
@@ -84,15 +116,23 @@ export default function SetupPage() {
     })();
   }, []);
 
+  function goToStep(nextStep: 1 | 2 | 3 | 4 | 5) {
+    setSaveOk(false);
+    setStep(nextStep);
+    persistSetupStep(userId, nextStep);
+  }
+
   // Step 5: Profile field updater
   function updateProfile<K extends keyof BusinessSetupProfile>(key: K, value: BusinessSetupProfile[K]) {
     setSaveOk(false);
+    setLoadError("");
     setProfile((prev) => ({ ...prev, [key]: value }));
   }
 
   // Step 6: Channel field updater
   function updateChannel(index: number, patch: Partial<BusinessSetupChannel>) {
     setSaveOk(false);
+    setLoadError("");
     setChannelMix((prev) => prev.map((ch, i) => (i === index ? { ...ch, ...patch } : ch)));
   }
 
@@ -102,8 +142,15 @@ export default function SetupPage() {
   // Step 8: Save on final step
   async function handleSave() {
     if (!userId) return;
+    const channelValidation = validateChannelMix(channelMix);
+    if (!channelValidation.isValid) {
+      setSaveOk(false);
+      setLoadError(channelValidation.error || "Unable to save business setup.");
+      return;
+    }
     setSaving(true);
     setSaveOk(false);
+    setLoadError("");
     try {
       const result = await saveBusinessSetup(userId, profile, channelMix);
       if (!result.ok) {
@@ -114,6 +161,8 @@ export default function SetupPage() {
       const fresh = await getBusinessSetup(userId);
       if (fresh.profile)             setProfile({ ...EMPTY_PROFILE, ...fresh.profile });
       if (fresh.channel_mix?.length) setChannelMix(fresh.channel_mix);
+      setSetupSaved(true);
+      goToStep(5);
       setSaveOk(true);
     } catch {
       setLoadError("บันทึกข้อมูล Business Setup ไม่สำเร็จ");
@@ -128,7 +177,12 @@ export default function SetupPage() {
     setLoading(true);
     getBusinessSetup(userId)
       .then((data) => {
-        if (data.profile)             setProfile({ ...EMPTY_PROFILE, ...data.profile });
+        if (data.profile) {
+          setProfile({ ...EMPTY_PROFILE, ...data.profile });
+          setSetupSaved(true);
+        } else {
+          setSetupSaved(false);
+        }
         if (data.channel_mix?.length) setChannelMix(data.channel_mix);
         if (data.error)               setLoadError(data.error);
       })
@@ -226,7 +280,7 @@ export default function SetupPage() {
                 <BusinessProfileStep
                   profile={profile}
                   onUpdate={updateProfile}
-                  onNext={() => { setSaveOk(false); setStep(2); }}
+                  onNext={() => goToStep(2)}
                   onCancel={handleCancel}
                 />
               )}
@@ -234,8 +288,8 @@ export default function SetupPage() {
                 <StoreSetupStep
                   profile={profile}
                   onUpdate={updateProfile}
-                  onNext={() => setStep(3)}
-                  onBack={() => setStep(1)}
+                  onNext={() => goToStep(3)}
+                  onBack={() => goToStep(1)}
                   onCancel={handleCancel}
                 />
               )}
@@ -244,16 +298,16 @@ export default function SetupPage() {
                   channels={channelMix}
                   profile={profile}
                   onUpdateChannel={updateChannel}
-                  onNext={() => setStep(4)}
-                  onBack={() => setStep(2)}
+                  onNext={() => goToStep(4)}
+                  onBack={() => goToStep(2)}
                   onCancel={handleCancel}
                 />
               )}
               {step === 4 && (
                 <InvoiceUploadStep
                   userId={userId}
-                  onNext={() => setStep(5)}
-                  onBack={() => setStep(3)}
+                  onNext={() => goToStep(5)}
+                  onBack={() => goToStep(3)}
                   onCancel={handleCancel}
                 />
               )}
@@ -262,9 +316,9 @@ export default function SetupPage() {
                   profile={profile}
                   channels={channelMix}
                   onSave={handleSave}
-                  onBack={() => setStep(4)}
+                  onBack={() => goToStep(4)}
                   saving={saving}
-                  saved={saveOk}
+                  saved={setupSaved}
                 />
               )}
             </div>
