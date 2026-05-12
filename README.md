@@ -134,7 +134,6 @@ Do not present these as active product features:
 |---|---|
 | `agent/tools/rag_tool.py` / `rag_cost_history_tool` | Exists, but not registered in `agent/main.py` and not called by chat |
 | `invoice_embeddings` | Schema helper exists, but indexing/retrieval is not wired into upload/save/chat |
-| `agent/tools/platform_gp_lookup_tool.py` | Exists and has tests, but is not registered in the active agent |
 | `data/raw/ingredient_matching_template.csv` | Seed data exists, but product lookup does not use it |
 | `pg_trgm` fuzzy matching | Not implemented |
 | Fuzzy ingredient search | Not implemented; current ingredient lookup is simple `ILIKE` |
@@ -282,7 +281,6 @@ These are intentionally listed so the submission reflects the real MVP scope:
 - `ingredient_matching_template.csv` and ingredient aliases are not used by product lookup yet.
 - `pg_trgm` fuzzy matching is not implemented.
 - Fuzzy ingredient search is not implemented.
-- `platform_gp_lookup_tool` exists but is not registered in the active agent.
 - L2 Cross-Platform Margin Arbitrage is documented only.
 - L5 Dynamic Delivery Radius Control is documented only.
 - Deterministic menu margin calculator and scenario simulator tools are planned future work.

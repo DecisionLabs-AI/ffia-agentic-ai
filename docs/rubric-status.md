@@ -79,7 +79,6 @@
 | `pg_trgm` matching | Planned | No implementation found in active flow |
 | L2 Cross-Platform Margin Arbitrage | Planned | Documented only, no active tool/API/UI |
 | L5 Dynamic Delivery Radius Control | Planned | Documented only, no active tool/API/UI |
-| `platform_gp_lookup_tool` | Exists but not wired | File and tests exist, but it is not registered in `agent/main.py` |
 | Deterministic menu margin calculator tool | Planned | Current menu margin math is prompt-guided from user-provided numbers |
 
 ---
@@ -133,7 +132,6 @@ Do not say:
 - RAG is active in the product flow.
 - Fuzzy ingredient search is implemented.
 - L2 and L5 are implemented.
-- `platform_gp_lookup_tool` is used by the active agent.
 - FFIA has a complete deterministic menu margin engine.
 
 ---

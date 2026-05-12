@@ -184,7 +184,6 @@ These files/capabilities exist but are not active product features:
 |---|---|
 | `agent/tools/rag_tool.py` | Exists, but `rag_cost_history_tool` is not registered in `agent/main.py` |
 | `invoice_embeddings` | Schema helper exists in `data/db.py`, but indexing/retrieval is not wired into upload/save/chat |
-| `agent/tools/platform_gp_lookup_tool.py` | Exists and has tests, but is not registered in the active agent |
 | `ingredient_aliases` / `ingredient_matching_template.csv` | Seed path exists, but product lookup does not use aliases |
 | `pg_trgm` fuzzy matching | Not implemented |
 | Fuzzy ingredient search | Not implemented |
@@ -337,7 +336,6 @@ Known reliability considerations:
 
 - Wire RAG indexing after invoice save and register `rag_cost_history_tool`.
 - Add fuzzy ingredient matching using aliases and/or `pg_trgm`.
-- Register or replace `platform_gp_lookup_tool` with deterministic platform fee resolution.
 - Add deterministic menu margin calculator tool.
 - Add L2 Cross-Platform Margin Arbitrage tool.
 - Add L5 Dynamic Delivery Radius Control tool.
