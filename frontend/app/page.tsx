@@ -14,13 +14,13 @@ const steps = [
   {
     title: "ตั้งค่าร้าน",
     text: "ใส่ประเภทร้าน ช่องทางขาย และเป้ากำไรที่ต้องการ",
-    href: "/setup",
+    href: "/setup?step=1",
     cta: "ไปตั้งค่าร้าน",
   },
   {
     title: "อัปโหลดใบเสร็จ",
     text: "รวมต้นทุนวัตถุดิบจริงให้ FFIA ใช้วิเคราะห์",
-    href: "/setup?step=upload",
+    href: "/setup?step=4",
     cta: "อัปโหลดใบเสร็จ",
   },
   {

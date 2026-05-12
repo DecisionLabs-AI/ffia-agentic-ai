@@ -134,19 +134,32 @@ export default function CostDataPage() {
     }
   }
 
+  function handleUploadMore() {
+    window.location.href = "/setup?step=4";
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl space-y-6">
-        <header>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-orange-600">
-            Cost Data
-          </p>
-          <h1 className="mt-1 text-3xl font-black text-slate-950">
-            Cost Data / ข้อมูลต้นทุน
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Review invoice line items and exclude non-business items from analysis.
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-orange-600">
+              Cost Data
+            </p>
+            <h1 className="mt-1 text-3xl font-black text-slate-950">
+              Cost Data / ข้อมูลต้นทุน
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              Review invoice line items and exclude non-business items from analysis.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleUploadMore}
+            className="rounded-xl bg-orange-600 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-orange-700"
+          >
+            อัปโหลดใบเสร็จเพิ่ม
+          </button>
         </header>
 
         {error && (

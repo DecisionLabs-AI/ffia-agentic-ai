@@ -17,6 +17,12 @@ import {
 } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { validateChannelMix } from "@/lib/businessSetupValidation";
+import {
+  BusinessSetupStep,
+  isValidBusinessSetupStep,
+  persistBusinessSetupStep,
+  readBusinessSetupStep,
+} from "@/lib/businessSetupStep";
 
 // Step 2: Default channel values (shown when no saved data exists)
 const DEFAULT_CHANNELS: BusinessSetupChannel[] = [
@@ -47,30 +53,18 @@ const STEPS = [
   { label: "AI Risk Profile"    },
 ] as const;
 
-const BUSINESS_SETUP_STEP_FALLBACK_KEY = "ffia_business_setup_step";
+const COMPLETED_SETUP_STEP: BusinessSetupStep = 5;
 
-function businessSetupStepKey(userId?: string): string {
-  return userId ? `ffia_business_setup_step_${userId}` : BUSINESS_SETUP_STEP_FALLBACK_KEY;
-}
-
-function isValidSetupStep(value: number): value is 1 | 2 | 3 | 4 | 5 {
-  return Number.isInteger(value) && value >= 1 && value <= STEPS.length;
-}
-
-function readStoredSetupStep(userId?: string): 1 | 2 | 3 | 4 | 5 | null {
-  if (typeof window === "undefined") return null;
-  const parsed = Number(localStorage.getItem(businessSetupStepKey(userId)));
-  return isValidSetupStep(parsed) ? parsed : null;
-}
-
-function persistSetupStep(userId: string | undefined, nextStep: number): void {
-  if (typeof window === "undefined" || !isValidSetupStep(nextStep)) return;
-  localStorage.setItem(businessSetupStepKey(userId), String(nextStep));
+function readTargetStep(params: URLSearchParams): BusinessSetupStep | null {
+  const rawStep = params.get("step");
+  if (rawStep === "upload") return 4;
+  const parsed = Number(rawStep);
+  return isValidBusinessSetupStep(parsed) ? parsed : null;
 }
 
 export default function SetupPage() {
   const [userId,     setUserId    ] = useState("");
-  const [step,       setStep      ] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step,       setStep      ] = useState<BusinessSetupStep>(1);
   const [profile,    setProfile   ] = useState<BusinessSetupProfile>(EMPTY_PROFILE);
   const [channelMix, setChannelMix] = useState<BusinessSetupChannel[]>(DEFAULT_CHANNELS);
   const [loading,    setLoading   ] = useState(true);
@@ -86,11 +80,11 @@ export default function SetupPage() {
     setUserId(user.user_id);
 
     const params = new URLSearchParams(window.location.search);
-    const deepLinkedStep = params.get("step") === "upload" ? 4 : null;
-    const restoredStep = readStoredSetupStep(user.user_id);
+    const deepLinkedStep = readTargetStep(params);
+    const restoredStep = readBusinessSetupStep(user.user_id);
     const initialStep = deepLinkedStep ?? restoredStep ?? 1;
+    const shouldPreferCompletedStep = deepLinkedStep === null && restoredStep === 4;
     setStep(initialStep);
-    persistSetupStep(user.user_id, initialStep);
 
     (async () => {
       setLoading(true);
@@ -103,6 +97,10 @@ export default function SetupPage() {
         if (data.profile) {
           setProfile({ ...EMPTY_PROFILE, ...data.profile });
           setSetupSaved(true);
+          if (shouldPreferCompletedStep) {
+            setStep(COMPLETED_SETUP_STEP);
+            persistBusinessSetupStep(user.user_id, COMPLETED_SETUP_STEP);
+          }
         } else {
           setSetupSaved(false);
         }
@@ -116,10 +114,10 @@ export default function SetupPage() {
     })();
   }, []);
 
-  function goToStep(nextStep: 1 | 2 | 3 | 4 | 5) {
+  function goToStep(nextStep: BusinessSetupStep) {
     setSaveOk(false);
     setStep(nextStep);
-    persistSetupStep(userId, nextStep);
+    persistBusinessSetupStep(userId, nextStep);
   }
 
   // Step 5: Profile field updater
@@ -162,7 +160,7 @@ export default function SetupPage() {
       if (fresh.profile)             setProfile({ ...EMPTY_PROFILE, ...fresh.profile });
       if (fresh.channel_mix?.length) setChannelMix(fresh.channel_mix);
       setSetupSaved(true);
-      goToStep(5);
+      goToStep(COMPLETED_SETUP_STEP);
       setSaveOk(true);
     } catch {
       setLoadError("บันทึกข้อมูล Business Setup ไม่สำเร็จ");
