@@ -1,7 +1,7 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 import agent.main as agent_main
 
@@ -14,17 +14,43 @@ class AgentMainTests(unittest.TestCase):
             {"role": "user", "content": "How does that affect margins?"},
         ]
 
-        with patch.object(
-            agent_main.agent,
-            "invoke",
-            return_value={"messages": [AIMessage(content="Using prior context now.")]},
-        ) as mock_invoke:
+        fake_agent = Mock()
+        fake_agent.invoke.return_value = {"messages": [AIMessage(content="Using prior context now.")]}
+
+        with patch.object(agent_main, "_get_agent", return_value=fake_agent):
             agent_main.run_agent("How does that affect margins?", history)
 
-        passed_messages = mock_invoke.call_args.args[0]["messages"]
+        passed_messages = fake_agent.invoke.call_args.args[0]["messages"]
         self.assertEqual(
             [message.content for message in passed_messages],
             ["What is diesel today?", "It is 31 THB.", "How does that affect margins?"],
+        )
+
+    def test_run_agent_accepts_langchain_message_history(self):
+        history = [
+            HumanMessage(content="เมนูกะเพราขาย 100 บาท ต้นทุน 55 บาท"),
+            AIMessage(content="รับทราบ"),
+        ]
+        fake_agent = Mock()
+        fake_agent.invoke.return_value = {"messages": [AIMessage(content="Follow-up handled.")]}
+
+        with patch.object(agent_main, "_get_agent", return_value=fake_agent):
+            agent_main.run_agent("ถ้าลด 10% ยังไหวไหม", history)
+
+        passed_messages = fake_agent.invoke.call_args.args[0]["messages"]
+        self.assertEqual(
+            [message.content for message in passed_messages],
+            ["เมนูกะเพราขาย 100 บาท ต้นทุน 55 บาท", "รับทราบ", "ถ้าลด 10% ยังไหวไหม"],
+        )
+
+    def test_promo_follow_up_reuses_user_values_from_history(self):
+        history = [
+            {"role": "human", "content": "เมนูกะเพราขาย 100 บาท ต้นทุน 55 บาท"},
+            {"role": "ai", "content": "บอกส่วนลดเพิ่มได้เลย"},
+        ]
+
+        self.assertIsNone(
+            agent_main._build_promo_missing_inputs_reply("ถ้าลด 10% ยังไหวไหม", history)
         )
 
     def test_reasoning_trace_maps_tool_outputs_by_tool_call_id(self):
@@ -60,11 +86,9 @@ class AgentMainTests(unittest.TestCase):
 
     def test_invoice_questions_use_latest_invoice_for_current_user_only(self):
         with patch.object(agent_main, "get_latest_invoice", return_value={"invoice_no": "INV-001"}) as mock_latest:
-            with patch.object(
-                agent_main.agent,
-                "invoke",
-                return_value={"messages": [AIMessage(content="Scoped invoice answer.")]},
-            ):
+            fake_agent = Mock()
+            fake_agent.invoke.return_value = {"messages": [AIMessage(content="Scoped invoice answer.")]}
+            with patch.object(agent_main, "_get_agent", return_value=fake_agent):
                 agent_main.run_agent("analyze my invoice", current_user_id="alice")
 
         mock_latest.assert_called_once_with("alice")

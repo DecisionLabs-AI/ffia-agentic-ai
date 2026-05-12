@@ -195,7 +195,19 @@ def _is_thai_message(text: str) -> bool:
     return bool(re.search(r"[ก-๙]", text or ""))
 
 
-def _build_promo_missing_inputs_reply(user_message: str) -> str | None:
+def _history_role_and_content(item) -> tuple[str | None, str]:
+    """Return a normalized chat role/content pair from dict or LangChain messages."""
+    if isinstance(item, dict):
+        return item.get("role"), str(item.get("content", "")).strip()
+
+    role = getattr(item, "type", None)
+    content = getattr(item, "content", "")
+    if isinstance(content, list):
+        content = _extract_text(content)
+    return role, str(content).strip()
+
+
+def _build_promo_missing_inputs_reply(user_message: str, chat_history: list | None = None) -> str | None:
     """Return a minimal follow-up question when promo viability inputs are insufficient."""
     # Profile, invoice, and tenant data questions must not be downgraded into
     # promo clarification just because Thai profile text contains "โปร".
@@ -205,8 +217,15 @@ def _build_promo_missing_inputs_reply(user_message: str) -> str | None:
     if not _PROMO_QUESTION_PATTERN.search(user_message or ""):
         return None
 
-    # Safety: evaluate promo inputs from the current user message only.
-    context_text = str(user_message or "")
+    # Evaluate user-provided values from recent turns so short follow-ups like
+    # "ลด 20%" can reuse a menu price/cost the user already gave.
+    context_parts = []
+    for item in list(chat_history or [])[-MAX_CHAT_HISTORY_MESSAGES:]:
+        role, content = _history_role_and_content(item)
+        if role in {"user", "human"} and content:
+            context_parts.append(content)
+    context_parts.append(str(user_message or ""))
+    context_text = "\n".join(context_parts)
     has_discount = bool(_PROMO_DISCOUNT_VALUE_PATTERN.search(context_text))
     has_price = bool(_PROMO_PRICE_VALUE_PATTERN.search(context_text))
     has_cost_or_margin = bool(_PROMO_COST_OR_MARGIN_PATTERN.search(context_text))
@@ -284,10 +303,10 @@ def _build_agent_messages(
     history = list(chat_history or [])
 
     if history:
-        last_message = history[-1]
+        last_role, last_content = _history_role_and_content(history[-1])
         if (
-            last_message.get("role") in {"user", "human"}
-            and str(last_message.get("content", "")).strip() == user_message.strip()
+            last_role in {"user", "human"}
+            and last_content == user_message.strip()
         ):
             history = history[:-1]
 
@@ -295,8 +314,7 @@ def _build_agent_messages(
     messages = []
 
     for item in relevant_history:
-        role = item.get("role")
-        content = str(item.get("content", "")).strip()
+        role, content = _history_role_and_content(item)
         if not content:
             continue
         if role in {"user", "human"}:
@@ -423,7 +441,7 @@ def run_agent(
           "intermediate_steps" — list of (tool_name: str, observation: str) tuples
     """
     # Step 10a: Strict promo stop rule — ask only minimum missing inputs and stop early.
-    promo_missing_reply = _build_promo_missing_inputs_reply(user_message)
+    promo_missing_reply = _build_promo_missing_inputs_reply(user_message, chat_history)
     if promo_missing_reply:
         return {"output": promo_missing_reply, "intermediate_steps": []}
 
