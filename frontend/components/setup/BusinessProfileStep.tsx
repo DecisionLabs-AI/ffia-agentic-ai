@@ -8,6 +8,7 @@ const FOOD_OPTIONS = [
   { value: "chicken_rice", label: "ข้าวมันไก่ / ข้าวขาหมู" },
   { value: "spicy_soup", label: "ต้มยำ / ต้มแซ่บ" },
   { value: "stir_fry", label: "ข้าวผัด / ผัดกะเพรา" },
+  { value: "thai_grill", label: "ปิ้งย่าง / หมูกระทะ" },
   { value: "isaan", label: "ส้มตำ / อาหารอีสาน" },
   { value: "spicy_salad", label: "ยำ / อาหารรสจัด" },
   { value: "healthy", label: "อาหารสุขภาพ / สลัดบ็อกซ์" },

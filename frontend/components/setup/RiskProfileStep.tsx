@@ -4,11 +4,11 @@ import type { BusinessSetupChannel, BusinessSetupProfile } from "@/lib/api";
 import { validateChannelMix } from "@/lib/businessSetupValidation";
 
 // Step 4a: LPG-intensive food types (from profile.py)
-const LPG_FOOD_TYPES = new Set(["rice_curry", "stir_fry", "spicy_soup", "isaan", "chicken_rice"]);
+const LPG_FOOD_TYPES = new Set(["rice_curry", "stir_fry", "spicy_soup", "isaan", "chicken_rice", "thai_grill"]);
 
 const FOOD_TYPE_COGS_BASE: Record<string, number> = {
   rice_curry: 0.375, noodle: 0.355, porridge: 0.355, chicken_rice: 0.375,
-  spicy_soup: 0.375, stir_fry: 0.375, isaan: 0.375, spicy_salad: 0.355,
+  spicy_soup: 0.375, stir_fry: 0.375, thai_grill: 0.375, isaan: 0.375, spicy_salad: 0.355,
   healthy: 0.300, vegan: 0.300, meal_prep: 0.300,
 };
 

@@ -24,6 +24,7 @@ const FOOD_TYPE_COGS_BASE: Record<string, number> = {
   chicken_rice: 0.375,
   spicy_soup:   0.375,
   stir_fry:     0.375,
+  thai_grill:   0.375,
   isaan:        0.375,
   spicy_salad:  0.355,
   healthy:      0.300,
