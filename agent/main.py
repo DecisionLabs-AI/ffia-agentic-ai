@@ -176,8 +176,9 @@ _PROMO_QUESTION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _PROMO_DISCOUNT_VALUE_PATTERN = re.compile(
-    r"(?:(?:ลด|ส่วนลด|discount|promo(?:tion)?|flash\s*sale|price cut|โปร(?![ก-๙A-Za-z])|โปรโมชั่น)[^0-9]{0,15}\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)?)"
-    r"|(?:\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)\s*(?:ส่วนลด|discount|promo(?:tion)?|off|ลด|flash\s*sale|โปร(?![ก-๙A-Za-z])|โปรโมชั่น))",
+    r"(?:(?:ลด|ส่วนลด|ลดราคา|discount|off|flash\s*sale|price cut)[^0-9]{0,15}\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)?)"
+    r"|(?:\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)\s*(?:ส่วนลด|discount|off|ลด|flash\s*sale))"
+    r"|(?:(?:promo(?:tion)?|โปร(?![ก-๙A-Za-z])|โปรโมชั่น)\s*\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์))",
     re.IGNORECASE,
 )
 _PROMO_PRICE_VALUE_PATTERN = re.compile(
@@ -188,11 +189,81 @@ _PROMO_COST_OR_MARGIN_PATTERN = re.compile(
     r"(?:ต้นทุน|cost|cogs|gp|margin|มาร์จิ้น|กำไรขั้นต้น|กำไรสุทธิ)[^0-9]{0,15}\d+(?:\.\d+)?\s*(?:บาท|baht|฿|%|percent|pct|เปอร์เซ็นต์)?",
     re.IGNORECASE,
 )
+_BUNDLE_SET_PATTERN = re.compile(
+    r"(ชุด|เซต|จัดชุด|เมนูเสริม|bundle|set\s*menu|combo|add-?on)",
+    re.IGNORECASE,
+)
+_BUNDLE_PRICE_PATTERN = re.compile(
+    r"(?:ขายราคา|ราคาขาย|ราคา(?:ชุด|เซต)?|bundle\s*price|set\s*price|selling\s*price|price)[^0-9]{0,20}(\d+(?:\.\d+)?)\s*(?:บาท|baht|฿)?",
+    re.IGNORECASE,
+)
+_BUNDLE_COST_PATTERN = re.compile(
+    r"(?:ต้นทุน|cost|cogs|main\s*item\s*cost)[^0-9]{0,20}(\d+(?:\.\d+)?)\s*(?:บาท|baht|฿)?",
+    re.IGNORECASE,
+)
+_BUNDLE_GP_PATTERN = re.compile(
+    r"(?:gp|GP|ค่าจีพี|จีพี)[^0-9]{0,20}(\d+(?:\.\d+)?)\s*(?:%|percent|pct|เปอร์เซ็นต์)",
+    re.IGNORECASE,
+)
+_BUNDLE_TARGET_MARGIN_PATTERN = re.compile(
+    r"(?:target\s*margin|target|margin|มาร์จิ้น|กำไร(?:สุทธิ|หลัง\s*GP)?)[^0-9]{0,25}(\d+(?:\.\d+)?)\s*(?:%|percent|pct|เปอร์เซ็นต์)",
+    re.IGNORECASE,
+)
 
 
 def _is_thai_message(text: str) -> bool:
     """Return True when the message contains Thai characters."""
     return bool(re.search(r"[ก-๙]", text or ""))
+
+
+def _first_float(pattern: re.Pattern, text: str) -> float | None:
+    match = pattern.search(text or "")
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_bundle_set_question(text: str) -> bool:
+    return bool(_BUNDLE_SET_PATTERN.search(text or ""))
+
+
+def _build_bundle_set_reply(user_message: str) -> str | None:
+    """Calculate bundle/set cost ceiling when all required inputs are present."""
+    text = str(user_message or "")
+    if not _is_bundle_set_question(text):
+        return None
+
+    price = _first_float(_BUNDLE_PRICE_PATTERN, text)
+    main_cost = _first_float(_BUNDLE_COST_PATTERN, text)
+    gp_pct = _first_float(_BUNDLE_GP_PATTERN, text)
+    target_margin_pct = _first_float(_BUNDLE_TARGET_MARGIN_PATTERN, text)
+    if None in {price, main_cost, gp_pct, target_margin_pct}:
+        return None
+
+    gp_cost = price * (gp_pct / 100)
+    target_margin = price * (target_margin_pct / 100)
+    max_total_cost = price - gp_cost - target_margin
+    remaining_addon_budget = max_total_cost - main_cost
+
+    if _is_thai_message(text):
+        return (
+            f"ต้นทุนรวมของทั้งชุดควรไม่เกิน {max_total_cost:.2f} บาท\n\n"
+            f"คำนวณ: {price:.2f} - ({price:.2f} x {gp_pct:.1f}%) - "
+            f"({price:.2f} x {target_margin_pct:.1f}%) = {max_total_cost:.2f} บาท\n"
+            f"ถ้าต้นทุนเมนูหลักคือ {main_cost:.2f} บาท งบที่เหลือสำหรับเมนูเสริมคือ "
+            f"{remaining_addon_budget:.2f} บาท"
+        )
+
+    return (
+        f"Max total bundle cost: {max_total_cost:.2f} THB\n\n"
+        f"Calculation: {price:.2f} - ({price:.2f} x {gp_pct:.1f}%) - "
+        f"({price:.2f} x {target_margin_pct:.1f}%) = {max_total_cost:.2f} THB\n"
+        f"With main item cost at {main_cost:.2f} THB, remaining add-on budget is "
+        f"{remaining_addon_budget:.2f} THB."
+    )
 
 
 def _history_role_and_content(item) -> tuple[str | None, str]:
@@ -215,6 +286,12 @@ def _build_promo_missing_inputs_reply(user_message: str, chat_history: list | No
         return None
 
     if not _PROMO_QUESTION_PATTERN.search(user_message or ""):
+        return None
+
+    # Bundle/set design is margin construction, not necessarily a discount promo.
+    # Let complete bundle questions calculate directly, and let incomplete ones
+    # reach the agent without forcing a discount-amount clarification.
+    if _is_bundle_set_question(user_message):
         return None
 
     # Evaluate user-provided values from recent turns so short follow-ups like
@@ -440,6 +517,10 @@ def run_agent(
           "output"             — final answer as a clean plain string
           "intermediate_steps" — list of (tool_name: str, observation: str) tuples
     """
+    bundle_set_reply = _build_bundle_set_reply(user_message)
+    if bundle_set_reply:
+        return {"output": bundle_set_reply, "intermediate_steps": []}
+
     # Step 10a: Strict promo stop rule — ask only minimum missing inputs and stop early.
     promo_missing_reply = _build_promo_missing_inputs_reply(user_message, chat_history)
     if promo_missing_reply:

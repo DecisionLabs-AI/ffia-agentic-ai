@@ -53,6 +53,28 @@ class AgentMainTests(unittest.TestCase):
             agent_main._build_promo_missing_inputs_reply("ถ้าลด 10% ยังไหวไหม", history)
         )
 
+    def test_bundle_set_question_does_not_ask_for_discount_amount(self):
+        message = (
+            "ข้าวหน้าหมูหม่าล่ามีต้นทุน 38 บาท ถ้าจะจัดชุดขายราคา 99 บาท "
+            "โดน GP 28% และต้องเหลือ margin หลัง GP อย่างน้อย 30% "
+            "ต้นทุนรวมของทั้งชุดควรไม่เกินกี่บาท"
+        )
+
+        self.assertIsNone(agent_main._build_promo_missing_inputs_reply(message))
+        result = agent_main.run_agent(message)
+
+        self.assertNotIn("จำนวนส่วนลด", result["output"])
+        self.assertIn("41.58", result["output"])
+        self.assertIn("3.58", result["output"])
+
+    def test_discount_promo_without_discount_value_still_asks_for_discount_amount(self):
+        message = "อยากทำโปร กะเพราขาย 100 บาท ต้นทุน 55 บาท ยังคุ้มไหม"
+
+        reply = agent_main._build_promo_missing_inputs_reply(message)
+
+        self.assertIsNotNone(reply)
+        self.assertIn("จำนวนส่วนลด", reply)
+
     def test_reasoning_trace_maps_tool_outputs_by_tool_call_id(self):
         messages = [
             AIMessage(
