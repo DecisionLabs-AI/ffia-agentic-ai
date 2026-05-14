@@ -62,6 +62,74 @@ Notes:
 This means the preview can show directionally useful pressure, but it should not
 be presented as audited net profit.
 
+## MVP Assumptions and Food Type Benchmarks
+
+### What these assumptions are
+
+AI Risk Profile Preview uses MVP benchmark assumptions to estimate three cost
+components that feed into the Estimated Blended Margin formula:
+
+| Component | Source |
+|---|---|
+| `AVG GP COST` | Calculated from channel mix and platform fees entered during setup |
+| `EST. FOOD COST` | Benchmark COGS base derived from the selected food type |
+| `EST. FIXED COST` | MVP fixed-cost assumption (not yet restaurant-specific) |
+
+```text
+EST. NET MARGIN = 100 - AVG GP COST - EST. FOOD COST - EST. FIXED COST
+```
+
+The following preview outputs depend on these assumptions:
+
+- **AI Risk Profile Preview** — fuel sensitivity classification, LPG-intensive flag
+- **Estimated Blended Margin Preview** — COGS base per food type
+
+### Where these assumptions live
+
+All food type benchmark values (COGS base, fuel sensitivity, LPG-intensive
+classification) and delivery dependency thresholds are currently implemented
+directly in the setup wizard frontend logic:
+
+- `frontend/components/setup/ChannelMixStep.tsx` — COGS base per food type
+- `frontend/components/setup/RiskProfileStep.tsx` — LPG-intensive food type set
+
+They are **not** centralized in a shared config file and are **not** fully
+documented in this file yet. See the future improvement note below.
+
+### What these assumptions are NOT
+
+- Not accounting-grade actual COGS
+- Not invoice-to-menu COGS mapping
+- Not backend pricing tool logic
+- Not inputs to FFIA Advisor deep agent analysis
+- Not audited net profit
+
+### Documented food type: thai_grill
+
+The `thai_grill` entry is explicitly documented here because it was added for
+the grill/BBQ demo use case. Other food types carry equivalent implicit
+assumptions that have not yet been individually documented in this file.
+
+| Display label | Internal key | COGS base | Fuel sensitivity | LPG-intensive |
+|---|---|---|---|---|
+| ปิ้งย่าง / BBQ | `thai_grill` | 37.5% / 0.375 | High | Yes |
+
+- **Display label:** ปิ้งย่าง / BBQ (Thai grill / moo kratha-style)
+- **Internal key:** `thai_grill`
+- **COGS base:** 37.5% (0.375) — MVP benchmark, same tier as stir-fry, soups, curries
+- **Fuel sensitivity:** High — classified as LPG-intensive because grilled menus rely on LPG/charcoal/open-flame cooking
+- **Scope:** AI Risk Profile Preview and Estimated Blended Margin Preview only; does not affect backend pricing tools or invoice COGS
+- **Limitation:** MVP benchmark value. Actual food cost varies by ingredient sourcing, portion size, and waste rate.
+
+### Limitation
+
+> This preview is designed to guide early setup decisions. Actual margin
+> analysis should use restaurant-specific invoice data, menu-level cost,
+> operating cost, and FFIA Advisor tools.
+
+> **Future improvement:** centralize all food type assumptions in a shared
+> config file and document every mapping in this file.
+
 ## Risk Card Rules
 
 ### A. Over-reliance on Delivery
