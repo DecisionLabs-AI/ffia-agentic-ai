@@ -303,6 +303,10 @@ backend's graceful timeout message instead of a browser-side abort.
 
 Known reliability considerations:
 
+- If Google Cloud rejects a request with billing disabled, the backend maps
+  Vertex/Google client errors to `gcp_billing_disabled` with an actionable
+  user-facing message. If Cloud Run itself rejects the request before the
+  container starts, enable billing on the deployed GCP project first.
 - Bangchak API/network failures are handled as tool errors or null dashboard oil data.
 - Database failures return user-friendly dashboard/API errors where implemented.
 - Long or broad agent questions may hit recursion/timeout limits.

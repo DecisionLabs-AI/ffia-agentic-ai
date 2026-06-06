@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import AppShell from "@/components/AppShell";
 import AuthGuard from "@/components/AuthGuard";
 import { AuthUser } from "@/lib/auth";
-import { ChatMessage, ToolStep, sendMessage } from "@/lib/api";
+import { ChatMessage, GCP_BILLING_DISABLED_MESSAGE, ToolStep, sendMessage } from "@/lib/api";
 
 const quickQuestions = [
   "ดีเซลขึ้น 5 บาท กระทบฉันแค่ไหน",
@@ -196,12 +196,16 @@ function ChatExperience({ user }: { user: AuthUser }) {
       ]);
       saveHistoryItem(text, answer);
     } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "chat_error";
       setMessages((current) => [
         ...current,
         {
           role: "ai",
-          content: "ขออภัย ตอนนี้เชื่อมต่อ FFIA ไม่สำเร็จ ลองใหม่อีกครั้งหลังตรวจว่า backend ทำงานอยู่",
-          error: err instanceof Error ? err.message : "chat_error",
+          content:
+            errorMessage === GCP_BILLING_DISABLED_MESSAGE
+              ? GCP_BILLING_DISABLED_MESSAGE
+              : "ขออภัย ตอนนี้เชื่อมต่อ FFIA ไม่สำเร็จ ลองใหม่อีกครั้งหลังตรวจว่า backend ทำงานอยู่",
+          error: errorMessage,
         },
       ]);
     } finally {

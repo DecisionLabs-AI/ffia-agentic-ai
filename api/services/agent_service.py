@@ -9,9 +9,67 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from api.services.runtime_errors import (
+    GCP_BILLING_DISABLED_ANSWER,
+    GCP_BILLING_DISABLED_ERROR,
+    is_gcp_billing_disabled_error,
+)
+
 logger = logging.getLogger(__name__)
 
 _executor = ThreadPoolExecutor(max_workers=4)
+
+# Step 0: Prompt injection & instruction-leak patterns
+_PROMPT_INJECTION_PATTERN = re.compile(
+    r"ignore\s+(previous|above|all|prior|your)\s+instructions?"
+    r"|reveal\s+(your\s+)?(system\s+)?prompt"
+    r"|show\s+(me\s+)?(your\s+)?(system\s+)?prompt"
+    r"|what\s+(is|are)\s+(your\s+)?(system\s+)?(prompt|instructions|rules|configuration)"
+    r"|repeat\s+(your\s+)?(system\s+)?instructions?"
+    r"|print\s+(your\s+)?(system\s+)?prompt"
+    r"|forget\s+(everything|all|your|what\s+you)"
+    r"|disregard\s+(previous|all|your|above)"
+    r"|you\s+are\s+now\s+(a|an)\s"
+    r"|pretend\s+(you\s+(are|were)|to\s+be)"
+    r"|act\s+as\s+(if\s+you|a|an)"
+    r"|jailbreak|\bDAN\b|do\s+anything\s+now"
+    r"|\[INST\]|\[SYS\]|<\|system\|>"
+    r"|ลืม.*คำสั่ง|แสดง.*(system\s*prompt|คำสั่งระบบ)"
+    r"|บอก.*(system\s*prompt|คำสั่งระบบ|prompt\s*ของ)"
+    r"|ทำตัวเป็น.*AI|ข้ามคำสั่งเดิม|เปลี่ยนตัวเอง",
+    re.IGNORECASE,
+)
+
+# Phrases that should never appear verbatim in a response (instruction leakage)
+_INSTRUCTION_LEAK_PATTERN = re.compile(
+    r"LANGUAGE LOCK\s*—\s*HIGHEST PRIORITY"
+    r"|DB ROUTING INSTRUCTION"
+    r"|current_user_placeholder"
+    r"|MUST call postgres_tool first before"
+    r"|PRICING DATA SOURCE PRIORITY\s*—\s*MANDATORY"
+    r"|CONFIDENTIALITY\s*&\s*SECURITY GUARDRAIL",
+    re.IGNORECASE,
+)
+
+_INJECTION_REFUSAL = (
+    "ฉันไม่สามารถเปิดเผยหรือแก้ไขการตั้งค่าระบบได้ "
+    "ถ้าอยากรู้เรื่องราคา ต้นทุน หรือการจัดการร้านอาหาร ถามได้เลยครับ"
+)
+_LEAK_REFUSAL = (
+    "ขออภัย ไม่สามารถตอบคำถามนี้ได้ "
+    "ถ้าอยากรู้เรื่องราคา ต้นทุน หรือการจัดการร้านอาหาร ถามได้เลยครับ"
+)
+
+
+def _is_prompt_injection(message: str) -> bool:
+    """Return True when the message looks like a prompt injection attempt."""
+    return bool(_PROMPT_INJECTION_PATTERN.search(message or ""))
+
+
+def _has_instruction_leak(text: str) -> bool:
+    """Return True when the response contains verbatim internal instruction text."""
+    return bool(_INSTRUCTION_LEAK_PATTERN.search(text or ""))
+
 
 _DB_INTENT_PATTERN = re.compile(
     r"(profile|business\s*risk|cost\s*risk|biggest\s+risk|my\s+business|my\s+restaurant"
@@ -91,6 +149,11 @@ async def ask_agent(
             "error": "กรุณาพิมพ์คำถามก่อนส่งให้ FFIA",
         }
 
+    # Step 1: Input guard — block prompt injection attempts before reaching the agent
+    if _is_prompt_injection(clean_message):
+        logger.warning("Prompt injection attempt blocked: %.120s", clean_message)
+        return {"answer": _INJECTION_REFUSAL, "trace": [], "error": "prompt_injection_blocked"}
+
     def _run() -> dict[str, Any]:
         from agent.main import run_agent
 
@@ -107,8 +170,13 @@ async def ask_agent(
             loop.run_in_executor(_executor, _run),
             timeout=_agent_timeout_seconds(),
         )
+        answer = str(result.get("output", "")).strip()
+        # Step 2: Output guard — scrub responses that contain verbatim internal instructions
+        if _has_instruction_leak(answer):
+            logger.warning("Instruction leak detected in agent output; replacing with safe refusal")
+            answer = _LEAK_REFUSAL
         return {
-            "answer": str(result.get("output", "")).strip(),
+            "answer": answer,
             "trace": _normalize_trace(result.get("intermediate_steps", [])),
             "error": None,
         }
@@ -126,7 +194,15 @@ async def ask_agent(
             "trace": [],
             "error": "agent_recursion_limit",
         }
-    except Exception:
+    except Exception as exc:
+        if is_gcp_billing_disabled_error(exc):
+            logger.warning("FFIA agent unavailable because GCP billing is disabled: %s", exc)
+            return {
+                "answer": GCP_BILLING_DISABLED_ANSWER,
+                "trace": [],
+                "error": GCP_BILLING_DISABLED_ERROR,
+            }
+
         logger.exception("FFIA agent call failed")
         return {
             "answer": "ขออภัย ตอนนี้ FFIA วิเคราะห์คำถามนี้ไม่สำเร็จ ลองถามใหม่ให้สั้นลงหรือเช็กการตั้งค่าระบบอีกครั้ง",

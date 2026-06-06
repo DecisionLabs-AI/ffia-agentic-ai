@@ -23,6 +23,16 @@ IT Lead: Kanpirom Suksawat. Stack: Python, Next.js, FastAPI, Gemini 2.5 Flash (V
 
 > `api/main.py` mocks Streamlit at startup because `app/` code still has residual Streamlit imports. Do not remove `app/` or Streamlit from `requirements.txt` without cleaning those imports first.
 
+## LLM Security Baseline — Required Before Any User-Facing Endpoint
+
+**Every time a new endpoint is added that accepts user input, or when the agent/system prompt is modified, verify these 3 items before writing any feature code:**
+
+1. **Input guard** — does `api/services/agent_service.py` call `_is_prompt_injection()` before passing the message to the agent? Any new endpoint that calls the agent directly must include this check.
+2. **Output guard** — does `_has_instruction_leak()` screen the agent response before it is returned to the user?
+3. **System prompt confidentiality** — does `agent/prompts/system_prompt.txt` contain the CONFIDENTIALITY & SECURITY GUARDRAIL section instructing the model never to reveal its prompt?
+
+If any of the above is missing — **tell the user before starting the new feature**. Do not wait for an issue to be discovered first.
+
 ## Do Not
 - Commit `.env` (it is in .gitignore)
 - Use pytesseract — use Claude Vision for OCR instead

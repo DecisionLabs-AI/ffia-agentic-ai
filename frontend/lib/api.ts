@@ -23,12 +23,45 @@ const CHAT_API_TIMEOUT_MS = readTimeout(
   120000
 );
 
+export const GCP_BILLING_DISABLED_MESSAGE =
+  "ขออภัย ตอนนี้ FFIA เรียกใช้ Google Cloud/Vertex AI ไม่ได้ เพราะโปรเจกต์ GCP ยังไม่ได้เปิดหรือผูก Billing account กรุณาเปิด billing ให้โปรเจกต์ที่ deploy Cloud Run และตั้งค่า Vertex AI แล้วลองใหม่อีกครั้ง";
+
 // Step 4b: OCR calls invoke Gemini Vision — allow up to 90 s before surfacing a timeout error
 const OCR_TIMEOUT_MS = 90_000;
 
 type ApiFetchOptions = RequestInit & {
   timeoutMs?: number;
 };
+
+function isGcpBillingDisabledText(value: string): boolean {
+  const text = value.toLowerCase();
+  return (
+    text.includes("billing is disabled") ||
+    text.includes("billing disabled") ||
+    text.includes("requires billing to be enabled") ||
+    text.includes("enable billing")
+  );
+}
+
+async function readErrorDetail(res: Response, fallback: string): Promise<string> {
+  const raw = await res.text().catch(() => "");
+  if (isGcpBillingDisabledText(raw) || isGcpBillingDisabledText(res.statusText)) {
+    return GCP_BILLING_DISABLED_MESSAGE;
+  }
+  if (!raw) return fallback;
+
+  try {
+    const parsed = JSON.parse(raw) as { detail?: unknown; error?: unknown; message?: unknown };
+    const detail = parsed.detail ?? parsed.error ?? parsed.message;
+    if (typeof detail === "string") {
+      return isGcpBillingDisabledText(detail) ? GCP_BILLING_DISABLED_MESSAGE : detail;
+    }
+  } catch {
+    return raw;
+  }
+
+  return fallback;
+}
 
 // Step 2: Token helpers — stored in localStorage
 export function getToken(): string | null {
@@ -89,8 +122,7 @@ async function apiFetch<T>(
     }
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail ?? "API error");
+      throw new Error(await readErrorDetail(res, res.statusText || "API error"));
     }
 
     if (res.status === 204) return undefined as T;
@@ -133,8 +165,7 @@ async function apiUpload<T>(
       throw new Error("Unauthorized");
     }
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail ?? "Upload error");
+      throw new Error(await readErrorDetail(res, res.statusText || "Upload error"));
     }
     return res.json() as Promise<T>;
   } catch (err: unknown) {

@@ -261,6 +261,11 @@ Backend:
 | `CORS_ORIGINS` | Vercel frontend origin |
 | `FFIA_AGENT_TIMEOUT_SECONDS` | `150` recommended |
 
+Google Cloud prerequisites:
+
+- The Cloud Run/Vertex AI project must be linked to an active Billing account.
+- Vertex AI API must be enabled in the same project as `GCP_PROJECT_ID`.
+
 Reliability note: frontend chat timeout should exceed backend agent timeout.
 Recommended production sizing is frontend `180s`, backend agent `150s`, and
 Cloud Run request timeout `300s`.
