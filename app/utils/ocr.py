@@ -1,6 +1,6 @@
 # =============================================================================
 # FFIA — app/utils/ocr.py
-# Real OCR extraction using Gemini 2.5 Flash Vision (via Vertex AI).
+# Real OCR extraction using Gemini 2.5 Flash Vision (via Gemini API / API key).
 # Sends the uploaded invoice image to Gemini, receives structured JSON,
 # normalizes it, and returns the canonical FFIA invoice dict.
 # =============================================================================
@@ -16,8 +16,7 @@ from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_google_vertexai import ChatVertexAI
-from google.oauth2 import service_account
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 
 load_dotenv()
@@ -34,25 +33,15 @@ _log = logging.getLogger("ffia.ocr")
 _llm = None
 
 def _get_llm():
-    """Return the Gemini Vision model (Vertex AI), constructing it once on first call."""
+    """Return the Gemini Vision model (Gemini API), constructing it once on first call."""
     global _llm
     if _llm is None:
-        # Step 3a: Load credentials from JSON string (Streamlit Cloud) or fall back to ADC
-        _creds_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
-        _credentials = None
-        if _creds_json:
-            _creds_dict = json.loads(_creds_json)
-            _credentials = service_account.Credentials.from_service_account_info(
-                _creds_dict,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
-            )
-        # Step 3b: Build LLM — model/location from env (reuses FFIA_AGENT_MODEL; no
-        # separate FFIA_OCR_MODEL is introduced yet — both agent and OCR use the same model).
-        _llm = ChatVertexAI(
+        # Step 3a: Build LLM — Gemini API (Google AI Studio), authenticated by API key.
+        # Model from env (reuses FFIA_AGENT_MODEL; no separate FFIA_OCR_MODEL yet — both
+        # agent and OCR use the same model). Key from GEMINI_API_KEY (never hardcoded).
+        _llm = ChatGoogleGenerativeAI(
             model=os.getenv("FFIA_AGENT_MODEL", "gemini-2.5-flash"),
-            project=os.getenv("GCP_PROJECT_ID"),
-            location=os.getenv("VERTEX_LOCATION", "asia-southeast1"),
-            credentials=_credentials,
+            google_api_key=os.getenv("GEMINI_API_KEY"),
             temperature=0.0,        # Deterministic extraction
             max_output_tokens=8192, # Long receipts (19+ items with Thai names) need headroom
         )

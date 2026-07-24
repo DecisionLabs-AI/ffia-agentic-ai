@@ -1,0 +1,36 @@
+# =============================================================================
+# FFIA — .dockerignore
+# Keep the backend image small: the frontend and local artifacts are NOT needed
+# to run api.main:app. Excluding frontend/ alone removes node_modules + .next.
+# =============================================================================
+
+# Frontend (deployed separately on Vercel — not part of the backend image)
+frontend/
+
+# Python virtualenvs / caches
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets and local env (set these in the Render dashboard instead)
+.env
+.env.*
+!.env.example
+
+# Notebooks and local scratch
+notebooks/
+*.ipynb_checkpoints/
+
+# Git / editor / OS
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Docs are not required at runtime
+docs/

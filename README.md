@@ -54,7 +54,7 @@ invoice review, and decision support.
 | Frontend | Next.js app in `frontend/` |
 | Backend | FastAPI app in `api/` |
 | Agent | LangGraph ReAct agent in `agent/main.py` |
-| LLM | Vertex AI `ChatVertexAI`, model from `FFIA_AGENT_MODEL`, region from `VERTEX_LOCATION` |
+| LLM | Gemini API `ChatGoogleGenerativeAI`, model from `FFIA_AGENT_MODEL`, key from `GEMINI_API_KEY` |
 | Database | PostgreSQL/Supabase via `DATABASE_URL`; single source of truth for invoice/profile/channel data |
 | Deployment target | Vercel frontend + Cloud Run backend |
 | Legacy app | Streamlit code remains in `app/`, but is not the primary deployed path |
@@ -237,7 +237,8 @@ Local URLs:
 Deployment target:
 
 - Frontend: Vercel
-- Backend: Google Cloud Run
+- Backend: Render (free tier) via `Dockerfile` + `render.yaml`. Google Cloud Run
+  remains a compatible alternative using the same `Dockerfile`.
 
 Frontend:
 
@@ -254,25 +255,35 @@ Backend:
 | `ENVIRONMENT` | `production` on Cloud Run |
 | `JWT_SECRET` | Required in production, even though active sandbox login stores local user context |
 | `FFIA_AUTH_USERS_JSON` | Single-line JSON array of PBKDF2 users |
-| `GCP_PROJECT_ID` | Google Cloud project ID |
-| `GCP_SERVICE_ACCOUNT_JSON` | Inline service account JSON, or use Cloud Run service account identity |
-| `VERTEX_LOCATION` | Example: `asia-southeast1` |
+| `GEMINI_API_KEY` | Gemini API key from Google AI Studio (aistudio.google.com) |
 | `FFIA_AGENT_MODEL` | Example: `gemini-2.5-flash` |
 | `CORS_ORIGINS` | Vercel frontend origin |
 | `FFIA_AGENT_TIMEOUT_SECONDS` | `150` recommended |
 
-Google Cloud prerequisites:
+Gemini API prerequisites:
 
-- The Cloud Run/Vertex AI project must be linked to an active Billing account.
-- Vertex AI API must be enabled in the same project as `GCP_PROJECT_ID`.
+- Generate a `GEMINI_API_KEY` at https://aistudio.google.com/app/apikey.
+- The key's Google Cloud project must have the Generative Language API enabled and, for higher quotas, an active Billing account.
 
 Reliability note: frontend chat timeout should exceed backend agent timeout.
 Recommended production sizing is frontend `180s`, backend agent `150s`, and
 Cloud Run request timeout `300s`.
 
-Deployment artifact note: this repository currently documents the Vercel +
-Cloud Run target, but checked-in `Dockerfile` / `cloudbuild.yaml` deployment
-artifacts are not present.
+### 4. Backend Deploy — Render (free)
+
+The backend ships with a checked-in `Dockerfile`, `.dockerignore`, and
+`render.yaml` blueprint. To deploy:
+
+1. Push this repo to GitHub.
+2. Render Dashboard → **New → Blueprint** → select this repo (it reads `render.yaml`).
+3. Fill in the secret env vars (`GEMINI_API_KEY`, `DATABASE_URL`,
+   `FFIA_AUTH_USERS_JSON`, `JWT_SECRET`, `CORS_ORIGINS`) when prompted.
+4. Once live, copy the service URL (e.g. `https://ffia-backend.onrender.com`) into
+   Vercel → `NEXT_PUBLIC_API_BASE_URL`, and set `CORS_ORIGINS` to the Vercel domain.
+
+Free-tier caveats: the service sleeps after ~15 min idle (first request ~50s cold
+start) and has 512MB RAM. The same `Dockerfile` also deploys to Railway or Google
+Cloud Run without changes.
 
 ---
 

@@ -11,7 +11,7 @@
 |---|---|---|---|---|
 | Problem framing | Complete | README problem statement; `docs/business_rules.md`; `docs/scenarios.md` | None for demo | Keep demo focused on Bangkok restaurant cost decisions |
 | Data source integration | Complete | PostgreSQL/Supabase via `DATABASE_URL`; `data/db.py`; dashboard/invoice/profile APIs | DB schema must exist and env vars must be configured | Verify production DB before demo |
-| Agentic AI behavior | Complete | `agent/main.py` uses LangGraph ReAct + `ChatVertexAI`; `/chat` calls `run_agent()` | Broad prompts may timeout or require more data | Use prepared demo prompts |
+| Agentic AI behavior | Complete | `agent/main.py` uses LangGraph ReAct + `ChatGoogleGenerativeAI`; `/chat` calls `run_agent()` | Broad prompts may timeout or require more data | Use prepared demo prompts |
 | Tool use | Complete for active tools | Registered tools in `agent/main.py`: `postgres_tool`, `search_tool`, `oil_price_tool`, `ingredient_price_tool`, L1/L3/L4/scenario tools | Some existing tools are not registered | Demo only active registered tools |
 | Business rule reasoning | Partial | `agent/tools/business_rules_tool.py` implements partial L1, L3, L4, scenario classifier | L2/L5 missing; L1/L3/L4 depend on supplied/derived inputs | Present as MVP decision-support logic |
 | User interface | Complete | Next.js pages: login, dashboard, setup, cost-data, chat; OCR review/edit/save | Requires backend URL and user config | Demo via Next.js app |
@@ -26,7 +26,7 @@
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| LLM core | Complete | Vertex AI `ChatVertexAI` in `agent/main.py`; model configured by `FFIA_AGENT_MODEL` |
+| LLM core | Complete | Gemini API `ChatGoogleGenerativeAI` in `agent/main.py`; model configured by `FFIA_AGENT_MODEL` |
 | Tool use, 2+ tools | Complete | Active agent registers 8 tools in `agent/main.py` |
 | Real/realistic data integration | Complete | PostgreSQL/Supabase invoice/profile/channel data; Bangchak oil API; ingredient reference table |
 | User interface | Complete | Next.js frontend in `frontend/` |

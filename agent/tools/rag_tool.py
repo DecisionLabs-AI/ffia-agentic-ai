@@ -1,7 +1,7 @@
 # =============================================================================
 # FFIA — agent/tools/rag_tool.py
 # RAG retrieval tool: indexes invoice cost history and retrieves relevant chunks
-# for the ReAct agent using PGVector + VertexAI text-embedding-004.
+# for the ReAct agent using PGVector + Gemini API text-embedding-004.
 #
 # Architecture: Path B — PGVector manages its own collection table.
 # This file does NOT use the invoice_embeddings table created by ensure_rag_schema().
@@ -17,10 +17,10 @@ import os
 from contextvars import ContextVar
 from dotenv import load_dotenv
 
-# Step 2: LangChain + VertexAI imports
+# Step 2: LangChain + Gemini API imports
 from langchain_core.tools import tool
 from langchain_core.documents import Document
-from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_postgres import PGVector
 
 # Step 3: FFIA data layer — available because agent/main.py adds project root to sys.path
@@ -54,18 +54,17 @@ def get_rag_tool_user_id() -> str | None:
 # ──────────────────────────────────────────────────────────────────────────────
 # Lazy singletons — embeddings and vector store initialized on first use
 # ──────────────────────────────────────────────────────────────────────────────
-_embeddings: VertexAIEmbeddings | None = None
+_embeddings: GoogleGenerativeAIEmbeddings | None = None
 _vector_store: PGVector | None = None
 
 
-def _get_embeddings() -> VertexAIEmbeddings:
-    # Step 5: VertexAI embeddings singleton — auth via GOOGLE_APPLICATION_CREDENTIALS
+def _get_embeddings() -> GoogleGenerativeAIEmbeddings:
+    # Step 5: Gemini API embeddings singleton — auth via GEMINI_API_KEY
     global _embeddings
     if _embeddings is None:
-        _embeddings = VertexAIEmbeddings(
-            model_name="text-embedding-004",
-            project=os.environ["GCP_PROJECT_ID"],
-            location="asia-southeast1",
+        _embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/text-embedding-004",
+            google_api_key=os.environ["GEMINI_API_KEY"],
         )
     return _embeddings
 

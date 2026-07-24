@@ -14,10 +14,9 @@ python-multipart>=0.0.19
 
 # --- LLM + Agent Framework (LangChain + LangGraph + Gemini via Google AI API) ---
 langchain>=0.3.0
-langchain-google-vertexai>=2.0.0
+langchain-google-genai>=2.0.0
 langchain-community>=0.3.0
 langgraph>=0.2.0
-google-cloud-aiplatform>=1.60.0
 
 # --- Database: PostgreSQL ---
 psycopg2-binary>=2.9.0

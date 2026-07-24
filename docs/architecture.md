@@ -32,7 +32,7 @@ The MVP is designed around a practical owner workflow:
 | Frontend | Next.js | `frontend/app/*`, `frontend/components/*`, `frontend/lib/api.ts` |
 | Backend API | FastAPI | `api/main.py`, `api/routes/*`, `api/services/*` |
 | Agent | LangGraph ReAct | `agent/main.py` |
-| LLM | Vertex AI `ChatVertexAI` / Gemini | `FFIA_AGENT_MODEL`, `VERTEX_LOCATION`, `GCP_PROJECT_ID` |
+| LLM | Gemini API `ChatGoogleGenerativeAI` | `FFIA_AGENT_MODEL`, `GEMINI_API_KEY` |
 | Database | PostgreSQL/Supabase | `data/db.py`, `DATABASE_URL` |
 | Deployment target | Vercel + Cloud Run | Vercel frontend, Cloud Run backend |
 | Legacy app | Streamlit | `app/` exists but is not the active primary product path |
@@ -136,9 +136,7 @@ Backend environment variables:
 | `ENVIRONMENT` | Runtime mode; `production` on Cloud Run |
 | `JWT_SECRET` | Required in production |
 | `FFIA_AUTH_USERS_JSON` | Login users with PBKDF2 password hashes |
-| `GCP_PROJECT_ID` | Vertex AI project |
-| `GCP_SERVICE_ACCOUNT_JSON` | Inline service account JSON or omit when using Cloud Run service account |
-| `VERTEX_LOCATION` | Vertex AI region |
+| `GEMINI_API_KEY` | Gemini API key from Google AI Studio |
 | `FFIA_AGENT_MODEL` | Gemini model name |
 | `CORS_ORIGINS` | Allowed frontend origins |
 | `FFIA_AGENT_TIMEOUT_SECONDS` | Agent service timeout; `150` recommended |
@@ -148,7 +146,7 @@ Backend environment variables:
 ## Agent Architecture
 
 `agent/main.py` builds a lazy singleton LangGraph ReAct agent using
-`create_react_agent(...)` and `ChatVertexAI`.
+`create_react_agent(...)` and `ChatGoogleGenerativeAI`.
 
 Key behavior:
 
@@ -237,7 +235,7 @@ User uploads image
 
 Current status:
 
-- OCR extraction uses Gemini Vision through `ChatVertexAI`.
+- OCR extraction uses Gemini Vision through `ChatGoogleGenerativeAI`.
 - Header fields are editable before save.
 - Line items are editable before save.
 - Edited values are saved through the current save payload.

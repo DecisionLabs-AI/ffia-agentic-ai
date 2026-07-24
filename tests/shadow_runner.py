@@ -23,9 +23,8 @@ from datetime import date
 from dotenv import load_dotenv
 load_dotenv()
 
-# Step 4: GCP / LangChain imports
-from google.oauth2 import service_account
-from langchain_google_vertexai import ChatVertexAI
+# Step 4: Gemini API / LangChain imports
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
@@ -149,30 +148,15 @@ def _worst_verdict(verdicts: list) -> str:
 # Agent construction
 # ---------------------------------------------------------------------------
 
-def _resolve_credentials():
-    # Step 7a: Replicate credential resolution from agent/main.py lines 84–91
-    _creds_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
-    if _creds_json:
-        _creds_dict = json.loads(_creds_json)
-        return service_account.Credentials.from_service_account_info(
-            _creds_dict,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-        )
-    return None  # Fall back to Application Default Credentials
-
-
 def _build_fresh_agent(prompt_text: str):
     """
     Construct a fresh LangGraph ReAct agent.
     Bypasses agent/main._get_agent() singleton entirely.
-    Mirrors construction block in agent/main.py lines 83–115.
+    Mirrors construction block in agent/main.py.
     """
-    credentials = _resolve_credentials()
-    llm = ChatVertexAI(
+    llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
-        project=os.getenv("GCP_PROJECT_ID"),
-        location="asia-southeast1",
-        credentials=credentials,
+        google_api_key=os.getenv("GEMINI_API_KEY"),
         temperature=0,
         max_output_tokens=4096,
     )
@@ -193,13 +177,10 @@ def _build_fresh_agent(prompt_text: str):
 
 
 def _build_judge_llm():
-    """Bare ChatVertexAI for the LLM-as-judge — no tools, no agent graph."""
-    credentials = _resolve_credentials()
-    return ChatVertexAI(
+    """Bare ChatGoogleGenerativeAI for the LLM-as-judge — no tools, no agent graph."""
+    return ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
-        project=os.getenv("GCP_PROJECT_ID"),
-        location="asia-southeast1",
-        credentials=credentials,
+        google_api_key=os.getenv("GEMINI_API_KEY"),
         temperature=0,
         max_output_tokens=4096,
     )
@@ -414,9 +395,9 @@ def main():
         )
         sys.exit(1)
 
-    gcp_project = os.getenv("GCP_PROJECT_ID")
-    if not gcp_project:
-        print("ERROR: GCP_PROJECT_ID is not set in .env")
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        print("ERROR: GEMINI_API_KEY is not set in .env")
         sys.exit(1)
 
     # Step 2: Load both prompt files

@@ -1,6 +1,6 @@
 # =============================================================================
 # FFIA — agent/main.py
-# LangGraph ReAct agent with Gemini 2.5 Flash (Vertex AI) + 2 tools:
+# LangGraph ReAct agent with Gemini 2.5 Flash (Gemini API / API key) + 2 tools:
 #   - PostgreSQL: query restaurant cost data
 #   - WebSearch: look up Bangkok oil prices and Thai fuel news
 # =============================================================================
@@ -22,8 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Step 3: LangChain + LangGraph imports
-from langchain_google_vertexai import ChatVertexAI
-from google.oauth2 import service_account
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph.errors import GraphRecursionError
@@ -56,18 +55,17 @@ def _load_system_prompt() -> str:
     return "You are FFIA, a restaurant cost optimization AI assistant for Bangkok."
 
 
-# Step 6: Runtime-configurable model and region — read after load_dotenv() has run.
+# Step 6: Runtime-configurable model — read after load_dotenv() has run.
 # Defaults keep behaviour identical to the previous hardcoded values.
 _AGENT_MODEL     = os.getenv("FFIA_AGENT_MODEL", "gemini-2.5-flash")
-_VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "asia-southeast1")
 _MAX_OUTPUT_TOKENS = int(os.getenv("FFIA_MAX_OUTPUT_TOKENS", "8192"))
 
 
 def _validate_env():
     """Warn loudly if critical credentials are missing."""
     missing = []
-    if not os.getenv("GCP_PROJECT_ID"):
-        missing.append("GCP_PROJECT_ID")
+    if not os.getenv("GEMINI_API_KEY"):
+        missing.append("GEMINI_API_KEY")
     if not os.getenv("DATABASE_URL"):
         missing.append("DATABASE_URL")
     if missing:
@@ -85,21 +83,11 @@ def _get_agent():
     """Return the LangGraph ReAct agent, constructing it once on first call."""
     global _agent_instance
     if _agent_instance is None:
-        # Step 7a: Build credentials — load from JSON string (Streamlit Cloud) or fall back to ADC
-        _creds_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
-        _credentials = None
-        if _creds_json:
-            _creds_dict = json.loads(_creds_json)
-            _credentials = service_account.Credentials.from_service_account_info(
-                _creds_dict,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
-            )
-        # Step 7b: Build LLM — model/location from env (FFIA_AGENT_MODEL, VERTEX_LOCATION)
-        llm = ChatVertexAI(
+        # Step 7a: Build LLM — Gemini API (Google AI Studio) authenticated by API key.
+        # Model from env (FFIA_AGENT_MODEL); key from GEMINI_API_KEY (never hardcoded).
+        llm = ChatGoogleGenerativeAI(
             model=_AGENT_MODEL,
-            project=os.getenv("GCP_PROJECT_ID"),
-            location=_VERTEX_LOCATION,
-            credentials=_credentials,
+            google_api_key=os.getenv("GEMINI_API_KEY"),
             temperature=0,
             max_output_tokens=_MAX_OUTPUT_TOKENS,
         )

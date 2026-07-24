@@ -2,7 +2,7 @@
 
 ## Project
 FFIA (Fuel & Food Impact Analyzer) — MADT 7204 Vibe Coding, W1–W6.
-IT Lead: Kanpirom Suksawat. Stack: Python, Next.js, FastAPI, Gemini 2.5 Flash (Vertex AI), PostgreSQL.
+IT Lead: Kanpirom Suksawat. Stack: Python, Next.js, FastAPI, Gemini 2.5 Flash (Gemini API / API key), PostgreSQL.
 
 ## Coding Rules
 - Always add `# Step N:` comments explaining each logical block
@@ -41,7 +41,7 @@ If any of the above is missing — **tell the user before starting the new featu
 
 ## Coding Standards & Library Versions
 - **Models:** ALWAYS use `gemini-2.5-flash` or newer. Never use `gemini-1.5-flash` as it is deprecated and will cause 404 errors.
-- **Google AI:** Use `langchain-google-vertexai` package. Import `ChatVertexAI` from `langchain_google_vertexai`. Auth via `GCP_SERVICE_ACCOUNT_JSON` + `GCP_PROJECT_ID` — NEVER use `GOOGLE_API_KEY` or `ChatGoogleGenerativeAI`.
+- **Google AI:** Use `langchain-google-genai` package. Import `ChatGoogleGenerativeAI` (chat/vision) and `GoogleGenerativeAIEmbeddings` (RAG) from `langchain_google_genai`. Auth via `GEMINI_API_KEY` (Google AI Studio key), passed as `google_api_key=os.getenv("GEMINI_API_KEY")` — NEVER hardcode the key. The project no longer uses Vertex AI (`ChatVertexAI`, `GCP_SERVICE_ACCOUNT_JSON`, `GCP_PROJECT_ID`, `VERTEX_LOCATION`).
 - **LangChain:** ALWAYS import Tools from `langchain_core.tools` (e.g., `from langchain_core.tools import Tool`). Do NOT use `langchain.tools`.
 - **Agents:** Avoid deprecated LangChain agent methods. Use current LangGraph or up-to-date `langchain.agents` patterns.
 - **Dependencies:** When generating `requirements.txt`, always assume the latest versions of packages for the current year (2026).

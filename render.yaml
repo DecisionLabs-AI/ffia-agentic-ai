@@ -1,0 +1,51 @@
+# =============================================================================
+# FFIA — Render Blueprint (free tier) for the FastAPI backend
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Deploy:
+#   1. Push this repo to GitHub.
+#   2. Render Dashboard → New → Blueprint → pick this repo (reads render.yaml).
+#   3. Fill in the secret env vars marked `sync: false` (see comments below).
+#   4. After it goes live, copy the service URL (https://ffia-backend.onrender.com)
+#      into Vercel → NEXT_PUBLIC_API_BASE_URL, and set CORS_ORIGINS here to the
+#      Vercel domain.
+#
+# Free-tier notes: the service sleeps after ~15 min idle (first request ~50s cold
+# start) and has 512MB RAM. Fine for the class demo.
+# =============================================================================
+
+services:
+  - type: web
+    name: ffia-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore            # closest to Bangkok
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # --- Non-secret config (safe to keep in the blueprint) ---
+      - key: ENVIRONMENT
+        value: production
+      - key: FFIA_AGENT_MODEL
+        value: gemini-2.5-flash
+      - key: FFIA_AGENT_TIMEOUT_SECONDS
+        value: "150"
+
+      # --- Secrets: set these in the Render dashboard (sync: false = prompt, not stored here) ---
+      # Gemini API key from https://aistudio.google.com/app/apikey
+      - key: GEMINI_API_KEY
+        sync: false
+      # PostgreSQL/Supabase connection string (append ?sslmode=require for hosted DBs)
+      - key: DATABASE_URL
+        sync: false
+      # Single-line JSON array of login users with PBKDF2 password hashes
+      - key: FFIA_AUTH_USERS_JSON
+        sync: false
+      # JWT signing key (required because ENVIRONMENT=production)
+      - key: JWT_SECRET
+        sync: false
+      # Comma-separated allowed origins — set to your Vercel domain,
+      # e.g. https://your-app.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
