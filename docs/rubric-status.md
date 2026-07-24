@@ -16,7 +16,7 @@
 | Business rule reasoning | Partial | `agent/tools/business_rules_tool.py` implements partial L1, L3, L4, scenario classifier | L2/L5 missing; L1/L3/L4 depend on supplied/derived inputs | Present as MVP decision-support logic |
 | User interface | Complete | Next.js pages: login, dashboard, setup, cost-data, chat; OCR review/edit/save | Requires backend URL and user config | Demo via Next.js app |
 | Transparency/auditability | Partial | `frontend/app/chat/page.tsx` shows lightweight tool observations in details | Not durable audit log; not hidden chain-of-thought | Present as lightweight trace |
-| Deployment readiness | Partial | Target is Vercel frontend + Cloud Run backend; env docs present | No checked-in `Dockerfile` / `cloudbuild.yaml`; timeouts must be configured | Add deploy artifacts after submission if needed |
+| Deployment readiness | Complete (infra) | Live: backend on Render `https://ffia-backend.onrender.com`, frontend on Vercel `https://ffia-agentic-ai.vercel.app`; checked-in `Dockerfile` + `render.yaml`; login verified end-to-end | Chat/OCR need a real `GEMINI_API_KEY` set on Render (currently placeholder → `agent_unavailable`); Render free tier sleeps after ~15 min idle | Set production `GEMINI_API_KEY` on Render, then re-test chat |
 | Limitations | Complete documentation | README and architecture mark RAG/fuzzy/L2/L5 as future work | Overclaiming would confuse graders | Keep warnings visible |
 | Future work | Planned | RAG, fuzzy matching, deterministic margin calculator, L2, L5 listed | Not demoable now | Move to post-MVP backlog |
 
@@ -31,7 +31,7 @@
 | Real/realistic data integration | Complete | PostgreSQL/Supabase invoice/profile/channel data; Bangchak oil API; ingredient reference table |
 | User interface | Complete | Next.js frontend in `frontend/` |
 | Reasoning transparency | Partial | Chat UI shows tool observations; no persisted audit trail |
-| Deployment path | Partial | Vercel + Cloud Run target documented; deploy artifacts still need hardening |
+| Deployment path | Complete | Live on Render (backend) + Vercel (frontend) via checked-in `Dockerfile` + `render.yaml`; login verified end-to-end |
 
 ---
 
@@ -42,7 +42,7 @@
 | Login sandbox flow | Complete | `frontend/app/login/page.tsx`, `api/routes/login.py` | Uses localStorage user context |
 | Dashboard summary | Complete | `frontend/app/dashboard/page.tsx`, `api/services/dashboard_service.py` | Uses `/dashboard-summary` |
 | Business setup save/load | Complete | `frontend/app/setup/page.tsx`, `api/routes/business_setup.py` | Profile + channel mix |
-| OCR invoice preview | Complete | `api/routes/invoices.py::ocr_invoice_preview`, `app/utils/ocr.py` | Requires Vertex AI config |
+| OCR invoice preview | Complete | `api/routes/invoices.py::ocr_invoice_preview`, `app/utils/ocr.py` | Requires `GEMINI_API_KEY` config |
 | OCR review/edit/save | Complete | `frontend/components/setup/InvoiceUploadStep.tsx`, `api/routes/invoices.py::save_invoice_endpoint` | Edited values are saved |
 | Invoice listing / top spend | Complete | Dashboard and cost-data pages; `data/db.py` invoice helpers | Excludes flagged rows where used |
 | Exclude item from analysis | Complete | `frontend/app/cost-data/page.tsx`, `data/db.py::toggle_item_exclusion` | Soft exclusion |
@@ -146,7 +146,7 @@ Do not say:
 | Menu margin calculator | Add deterministic calculator tool for user-provided menu price/cost/channel data |
 | L2 | Implement cross-platform margin comparison and persistence of historical platform margin signals |
 | L5 | Implement delivery radius calculation with diesel, traffic, and rain inputs |
-| Deployment | Add checked-in Cloud Run deployment artifacts and deployment runbook |
+| Deployment | Done — Render (backend) + Vercel (frontend) live via checked-in `Dockerfile` + `render.yaml`; remaining action is to set the real `GEMINI_API_KEY` on Render |
 | Auditability | Persist structured traces and source tags |
 
 ---
