@@ -1,0 +1,39 @@
+# =============================================================================
+# FFIA Project Dependencies — W2
+# Source of truth for direct deps (>= floors). Do NOT install from this file.
+# Regenerate the pinned lock with Python 3.12 (matches Dockerfile):
+#   pip-compile --strip-extras --no-emit-index-url -o requirements.txt requirements.in
+# Install with: pip install -r requirements.txt
+# =============================================================================
+
+# --- UI Framework ---
+streamlit>=1.45.0
+
+# --- FastAPI backend wrapper for Next.js migration sandbox ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.19
+
+# --- LLM + Agent Framework (LangChain + LangGraph + Gemini via Google AI API) ---
+langchain>=0.3.0
+langchain-google-genai>=2.0.0
+langchain-community>=0.3.0
+langgraph>=0.2.0
+
+# --- Database: PostgreSQL ---
+psycopg2-binary>=2.9.0
+psycopg[binary]>=3.1.0
+langchain-postgres>=0.0.12
+pgvector>=0.3.0
+
+# --- Web Search (DuckDuckGo, no API key required) ---
+ddgs>=9.0.0
+
+# --- Environment Variables ---
+python-dotenv>=1.0.0
+
+# --- Data Processing ---
+pandas>=2.0.0
+tabulate>=0.9.0
+requests>=2.31.0
