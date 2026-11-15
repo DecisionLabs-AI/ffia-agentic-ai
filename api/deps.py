@@ -7,9 +7,9 @@
 import os
 from functools import lru_cache
 
+import jwt  # PyJWT
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
 
 # Step 2: JWT config from environment
 # In production (ENVIRONMENT=production) a missing JWT_SECRET raises at startup rather
@@ -72,12 +72,14 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        # algorithms must stay an explicit allow-list (blocks alg=none / alg confusion);
+        # signature + exp verification are PyJWT defaults — never disable them.
         payload = jwt.decode(creds.credentials, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
         user_id: str = payload.get("sub", "")
         display_name: str = payload.get("display_name", user_id)
         if not user_id:
             raise credentials_error
-    except JWTError:
+    except jwt.PyJWTError:
         raise credentials_error
     return {"user_id": user_id, "display_name": display_name}
 

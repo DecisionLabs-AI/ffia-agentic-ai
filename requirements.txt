@@ -49,17 +49,13 @@ click==8.5.1
     #   streamlit
     #   uvicorn
 cryptography==50.0.2
-    # via
-    #   google-auth
-    #   python-jose
+    # via google-auth
 ddgs==9.16.1
     # via -r requirements.in
 distro==1.9.0
     # via
     #   google-genai
     #   langsmith
-ecdsa==0.19.2
-    # via python-jose
 fastapi==0.163.1
     # via -r requirements.in
 filetype==1.2.0
@@ -224,10 +220,7 @@ psycopg2-binary==2.9.13
 pyarrow==26.0.1
     # via streamlit
 pyasn1==0.6.5
-    # via
-    #   pyasn1-modules
-    #   python-jose
-    #   rsa
+    # via pyasn1-modules
 pyasn1-modules==0.4.2
     # via google-auth
 pycparser==3.12
@@ -249,6 +242,8 @@ pydantic-settings==2.16.3
     # via langchain-community
 pydeck==0.9.3
     # via streamlit
+pyjwt==2.15.1
+    # via -r requirements.in
 python-dateutil==4.0.0
     # via pandas
 python-dotenv==1.2.4
@@ -256,8 +251,6 @@ python-dotenv==1.2.4
     #   -r requirements.in
     #   pydantic-settings
     #   uvicorn
-python-jose==3.5.0
-    # via -r requirements.in
 python-multipart==0.0.33
     # via
     #   -r requirements.in
@@ -288,10 +281,6 @@ rpds-py==2026.9.1
     # via
     #   jsonschema
     #   referencing
-rsa==4.9.1
-    # via python-jose
-six==1.17.0
-    # via ecdsa
 sniffio==1.3.1
     # via
     #   google-genai
