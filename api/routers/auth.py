@@ -2,15 +2,15 @@
 # FFIA — api/routers/auth.py
 # Login and current-user endpoints.
 # Reuses verify_password() from app/utils/auth.py (no Streamlit dependency).
-# JWT issued with python-jose HS256.
+# JWT issued with PyJWT HS256.
 # =============================================================================
 
 # Step 1: Imports
 import os
 from datetime import datetime, timezone, timedelta
 
+import jwt  # PyJWT
 from fastapi import APIRouter, Depends, HTTPException, status
-from jose import jwt
 
 from api.deps import get_auth_users, get_current_user
 from api.schemas import LoginRequest, LoginResponse, MeResponse
@@ -34,7 +34,7 @@ _TOKEN_EXPIRE_HOURS = 8
 
 
 def _create_token(user_id: str, display_name: str) -> str:
-    """Issue a signed JWT with 8-hour expiry."""
+    """Issue a signed JWT with 8-hour expiry (exp is UTC-aware; PyJWT returns str)."""
     payload = {
         "sub": user_id,
         "display_name": display_name,
